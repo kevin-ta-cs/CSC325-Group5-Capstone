@@ -15,5 +15,5 @@ Capstone project for CSC325
 - 2:
   Bio:
 
--3:
+- 3:
   Bio:
