@@ -305,6 +305,49 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
     }
+    #lost-item-form {
+  max-width: 600px;
+  padding: 24px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+#lost-item-form label {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+#lost-item-form input,
+#lost-item-form textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  font: inherit;
+}
+
+#lost-item-form textarea {
+  resize: vertical;
+}
+
+#lost-item-form input:focus,
+#lost-item-form textarea:focus {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+#report-message {
+  max-width: 600px;
+  overflow-wrap: anywhere;
+}
+
+#report-message:not(:empty) {
+  padding: 16px;
+  background: var(--mint);
+  border-radius: 8px;
+}
   </style>
 </head>
 <body>
@@ -314,6 +357,7 @@
       CampusFind
     </a>
     <nav aria-label="Main navigation">
+      <a href="#report-lost">Report a lost item</a>
       <a href="#how-it-works">How it works</a>
       <a class="button" href="#get-started">Get started</a>
     </nav>
@@ -379,11 +423,71 @@
         <a class="button" href="#how-it-works">See how it works <span aria-hidden="true">&nbsp;→</span></a>
       </div>
     </section>
+    <section class="section shell" id="report-lost"
+         aria-labelledby="report-title">
+  <h2 id="report-title">Report a lost item</h2>
+  <p>Enter the details of your missing item.</p>
+  <p>This form is a prototype. Reports are not saved yet.</p>
+
+  <form id="lost-item-form">
+    <p>
+      <label for="item-name">Item name</label><br>
+      <input type="text" id="item-name" name="itemName"
+             maxlength="100" required>
+    </p>
+
+    <p>
+      <label for="description">Description</label><br>
+      <textarea id="description" name="description"
+                rows="4" maxlength="1000" required></textarea>
+    </p>
+
+    <p>
+      <label for="location">Location last seen</label><br>
+      <input type="text" id="location" name="location"
+             maxlength="150" required>
+    </p>
+
+    <p>
+      <label for="date-lost">Date lost</label><br>
+      <input type="date" id="date-lost" name="dateLost" required>
+    </p>
+
+    <button class="button" type="submit">Preview report</button>
+  </form>
+
+  <p id="report-message" role="status"></p>
+</section>
   </main>
 
   <footer class="shell">
     <p>© <span id="year">2026</span> CampusFind</p>
     <p>Made for a more connected campus.</p>
   </footer>
+  <script>
+  const form = document.getElementById("lost-item-form");
+  const message = document.getElementById("report-message");
+
+  form.addEventListener("submit", function(event) {
+    event.preventDefault();
+
+    const item = document.getElementById("item-name").value.trim();
+    const description = document.getElementById("description").value.trim();
+    const location = document.getElementById("location").value.trim();
+    const date = document.getElementById("date-lost").value;
+
+    if (!item || !description || !location) {
+      message.textContent = "Please enter details in every field.";
+      return;
+    }
+
+    message.textContent =
+      "Preview: " + item +
+      " | Description: " + description +
+      " | Last seen: " + location +
+      " | Date lost: " + date +
+      ". This report has not been saved.";
+  });
+</script>
 </body>
 </html>
