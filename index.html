@@ -348,6 +348,49 @@
   background: var(--mint);
   border-radius: 8px;
 }
+#found-item-form {
+  max-width: 600px;
+  padding: 24px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+#found-item-form label {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+#found-item-form input,
+#found-item-form textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  font: inherit;
+}
+
+#found-item-form textarea {
+  resize: vertical;
+}
+
+#found-item-form input:focus,
+#found-item-form textarea:focus {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+#found-message {
+  max-width: 600px;
+  overflow-wrap: anywhere;
+}
+
+#found-message:not(:empty) {
+  padding: 16px;
+  background: var(--mint);
+  border-radius: 8px;
+}
   </style>
 </head>
 <body>
@@ -358,6 +401,7 @@
     </a>
     <nav aria-label="Main navigation">
       <a href="#report-lost">Report a lost item</a>
+      <a href="#report-found">Report a found item</a>
       <a href="#how-it-works">How it works</a>
       <a class="button" href="#get-started">Get started</a>
     </nav>
@@ -458,6 +502,41 @@
 
   <p id="report-message" role="status"></p>
 </section>
+<section class="section shell" id="report-found"
+         aria-labelledby="found-title">
+  <h2 id="found-title">Report a found item</h2>
+  <p>Enter the details of the item you found.</p>
+  <p>This form is a prototype. Reports are not saved yet.</p>
+
+  <form id="found-item-form">
+    <p>
+      <label for="found-name">Item name</label><br>
+      <input type="text" id="found-name" name="itemName"
+             maxlength="100" required>
+    </p>
+
+    <p>
+      <label for="found-description">Description</label><br>
+      <textarea id="found-description" name="description"
+                rows="4" maxlength="1000" required></textarea>
+    </p>
+
+    <p>
+      <label for="found-location">Location found</label><br>
+      <input type="text" id="found-location" name="location"
+             maxlength="150" required>
+    </p>
+
+    <p>
+      <label for="found-date">Date found</label><br>
+      <input type="date" id="found-date" name="dateFound" required>
+    </p>
+
+    <button class="button" type="submit">Preview found report</button>
+  </form>
+
+  <p id="found-message" role="status"></p>
+</section>
   </main>
 
   <footer class="shell">
@@ -486,6 +565,34 @@
       " | Description: " + description +
       " | Last seen: " + location +
       " | Date lost: " + date +
+      ". This report has not been saved.";
+  });
+</script>
+<script>
+  const foundForm = document.getElementById("found-item-form");
+  const foundMessage = document.getElementById("found-message");
+
+  foundForm.addEventListener("submit", function(event) {
+    event.preventDefault();
+
+    const item = document.getElementById("found-name").value.trim();
+    const description =
+      document.getElementById("found-description").value.trim();
+    const location =
+      document.getElementById("found-location").value.trim();
+    const date = document.getElementById("found-date").value;
+
+    if (!item || !description || !location) {
+      foundMessage.textContent =
+        "Please enter details in every field.";
+      return;
+    }
+
+    foundMessage.textContent =
+      "Found item preview: " + item +
+      " | Description: " + description +
+      " | Found at: " + location +
+      " | Date found: " + date +
       ". This report has not been saved.";
   });
 </script>
