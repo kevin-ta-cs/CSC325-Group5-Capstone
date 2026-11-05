@@ -55,3 +55,13 @@ Examples:
 • Check that the application works properly on different screen sizes and browsers.
 
 - Testing Goal: the overall goal of our testing plan is to ensure that the Campus Lost & Found system is reliable, easy to use, and secure. By performing unit, integration, and system testing, we aim to identify and fix problems before the application is completed.
+
+## User accounts
+Django's built-in authentication system stores user accounts, password hashes, and sessions in the project's SQLite database (`DjangoLostandFound/db.sqlite3`). From the repository root, initialize the database and start the application with:
+
+```sh
+python DjangoLostandFound/manage.py migrate
+python DjangoLostandFound/manage.py runserver
+```
+
+Create accounts at `/register/`, log in at `/login/`, and log out from the home page. Passwords are hashed by Django and are not stored as plain text.

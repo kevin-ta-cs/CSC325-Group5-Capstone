@@ -315,7 +315,16 @@
     </a>
     <nav aria-label="Main navigation">
       <a href="#how-it-works">How it works</a>
-      <a class="button" href="#get-started">Get started</a>
+      {% if user.is_authenticated %}
+        <span>Hi, {{ user.username }}</span>
+        <form action="{% url 'logout' %}" method="post">
+          {% csrf_token %}
+          <button class="button secondary" type="submit">Log out</button>
+        </form>
+      {% else %}
+        <a href="{% url 'login' %}">Log in</a>
+        <a class="button" href="{% url 'register' %}">Create account</a>
+      {% endif %}
     </nav>
   </header>
 
@@ -329,7 +338,7 @@
           and help good things make their way back home.
         </p>
         <div class="actions">
-          <a class="button" href="#get-started">Explore CampusFind <span aria-hidden="true">&nbsp;→</span></a>
+          <a class="button" href="{% url 'register' %}">Explore CampusFind <span aria-hidden="true">&nbsp;→</span></a>
           <a class="button secondary" href="#how-it-works">How it works</a>
         </div>
       </div>
@@ -376,7 +385,7 @@
           <h2 id="get-started-title">Make a little campus magic.</h2>
           <p>One report could be the thing that makes someone's day.</p>
         </div>
-        <a class="button" href="#how-it-works">See how it works <span aria-hidden="true">&nbsp;→</span></a>
+        <a class="button" href="{% url 'register' %}">Get started <span aria-hidden="true">&nbsp;→</span></a>
       </div>
     </section>
   </main>
