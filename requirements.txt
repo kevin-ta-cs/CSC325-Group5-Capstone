@@ -1,3 +1,4 @@
 asgiref==3.13.0
 Django==6.1.2
+django-mongodb-backend==6.1.0
 sqlparse==0.6.0
