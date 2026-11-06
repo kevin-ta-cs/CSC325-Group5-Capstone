@@ -314,6 +314,16 @@
       CampusFind
     </a>
     <nav aria-label="Main navigation">
+      {% if user.is_authenticated %}
+        <span>Welcome, {{ user.username }}!</span>
+        <form action="{% url 'logout' %}" method="post">
+          {% csrf_token %}
+          <button class="button" type="submit">Logout</button>
+        </form>
+      {% else %}
+        <a class="button secondary" href="{% url 'login' %}">Login</a>
+        <a class="button" href="{% url 'signup' %}">Sign Up</a>
+      {% endif %}
       <a href="#how-it-works">How it works</a>
       <a class="button" href="#get-started">Get started</a>
     </nav>
