@@ -1,17 +1,69 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Sign up</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#164b46">
+  <title>Create an account — FindIt</title>
+  <link rel="stylesheet" href="{% static 'myapp/site.css' %}">
 </head>
-<body>
-  <h1>Sign up</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.non_field_errors }}
-    {{ form.as_p }}
-    <button type="submit">Create account</button>
-  </form>
-  <p>Already have an account? <a href="{% url 'login' %}">Log in</a></p>
+<body class="auth-page">
+  <main class="auth-card">
+    <section class="auth-aside">
+      <a class="brand" href="{% url 'home' %}" aria-label="FindIt home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 4.4 4.4"></path></svg>
+        </span>
+        <span>FindIt</span>
+      </a>
+      <div class="auth-symbol" aria-hidden="true">✦</div>
+      <h1>Help your campus bring things home.</h1>
+      <p>Join a campus community that looks out for one another. Create an account to get started with FindIt.</p>
+      <ul class="auth-benefits">
+        <li><span aria-hidden="true">✓</span> Free to join</li>
+        <li><span aria-hidden="true">✓</span> Made for your campus community</li>
+        <li><span aria-hidden="true">✓</span> Simple, secure sign in</li>
+      </ul>
+    </section>
+    <section class="auth-content" aria-labelledby="form-title">
+      <nav class="auth-tabs" aria-label="Account options">
+        <a href="{% url 'login' %}">Log in</a>
+        <a href="{% url 'signup' %}" aria-current="page">Create account</a>
+      </nav>
+      <p class="auth-kicker">Join your campus</p>
+      <h2 id="form-title">Create your account</h2>
+      <form class="auth-form" method="post">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+          <div class="auth-errors" role="alert">{{ form.non_field_errors }}</div>
+        {% endif %}
+        <div class="form-field">
+          <label for="{{ form.username.id_for_label }}">Username</label>
+          {{ form.username }}
+          {% if form.username.help_text %}<p class="field-help">{{ form.username.help_text }}</p>{% endif %}
+          {% if form.username.errors %}<div class="field-errors" role="alert">{{ form.username.errors }}</div>{% endif %}
+        </div>
+        <div class="form-field">
+          <label for="{{ form.email.id_for_label }}">Email</label>
+          {{ form.email }}
+          {% if form.email.errors %}<div class="field-errors" role="alert">{{ form.email.errors }}</div>{% endif %}
+        </div>
+        <div class="form-field">
+          <label for="{{ form.password1.id_for_label }}">Password</label>
+          {{ form.password1 }}
+          {% if form.password1.help_text %}<p class="field-help">{{ form.password1.help_text }}</p>{% endif %}
+          {% if form.password1.errors %}<div class="field-errors" role="alert">{{ form.password1.errors }}</div>{% endif %}
+        </div>
+        <div class="form-field">
+          <label for="{{ form.password2.id_for_label }}">Confirm password</label>
+          {{ form.password2 }}
+          {% if form.password2.errors %}<div class="field-errors" role="alert">{{ form.password2.errors }}</div>{% endif %}
+        </div>
+        <button class="auth-submit" type="submit">Create account</button>
+      </form>
+      <p class="auth-back">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
+    </section>
+  </main>
 </body>
 </html>
