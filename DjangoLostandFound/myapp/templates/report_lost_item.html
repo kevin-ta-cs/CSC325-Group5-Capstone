@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Report a lost item — CampusFind</title>
+</head>
+<body>
+  <main>
+    <h1>Report a lost item</h1>
+
+    {% if messages %}
+      {% for message in messages %}
+        <p>{{ message }}</p>
+      {% endfor %}
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Submit report</button>
+    </form>
+    <p><a href="{% url 'home' %}">Back to home</a></p>
+  </main>
+</body>
+</html>
