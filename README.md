@@ -55,3 +55,11 @@ Examples:
 • Check that the application works properly on different screen sizes and browsers.
 
 - Testing Goal: the overall goal of our testing plan is to ensure that the Campus Lost & Found system is reliable, easy to use, and secure. By performing unit, integration, and system testing, we aim to identify and fix problems before the application is completed.
+
+# Running the Project
+
+1. You must create a .env file and have it be in the outer DjangoLostandFound, it should be right above the manage.py file
+2. Copy and Paste this into the file and save: MONGODB_URI=mongodb+srv://user:password@lostandfound.db1lsrs.mongodb.net/
+3. In the terminal wirte: cd DjangoLostandFound
+4. Then write; pyhton3 manage.py runserver
+5. If this dosent work, download the requirments file. Then run the server again. 
