@@ -58,8 +58,95 @@ Examples:
 
 # Running the Project
 
-1. You must create a .env file and have it be in the outer DjangoLostandFound, it should be right above the manage.py file
-2. Copy and Paste this into the file and save: MONGODB_URI=mongodb+srv://user:password@lostandfound.db1lsrs.mongodb.net/
-3. In the terminal wirte: cd DjangoLostandFound
-4. Then write; pyhton3 manage.py runserver
-5. If this dosent work, download the requirments file. Then run the server again. 
+## Prerequisites
+- Python 3.13 or a version compatible with the project's dependencies
+- Git
+- Access to the team's MongoDB database
+
+## Installation and Setup
+
+1. Clone the repository and open it in VS Code.
+2. Open a terminal in the project directory.
+3. Install the required dependencies:
+
+   ```bash
+   python3 -m pip install -r requirements.txt
+   ```
+
+4. Create a `.env` file inside the outer `DjangoLostandFound` folder, alongside `manage.py`.
+
+5. Add the following environment variables:
+
+   ```dotenv
+   DJANGO_SECRET_KEY=Y3VujzyOVsIuL30v4W5yuYj4kAFYeMIPubH3gJPXMDsRwcaK1LgAy2all6zpG4jF86A
+   MONGODB_URI=MONGODB_URI=mongodb+srv://user:password@lostandfound.db1lsrs.mongodb.net/
+   ```
+
+6. Replace the placeholders with your own authorized credentials. Never commit or share the `.env` file.
+
+7. Navigate to the Django application directory:
+
+   ```bash
+   cd DjangoLostandFound
+   ```
+
+8. Start the development server:
+
+   ```bash
+   python3 manage.py runserver
+   ```
+
+## Running Automated Tests
+
+From the `DjangoLostandFound` directory, run:
+
+```bash
+python3 manage.py test myapp --noinput
+```
+
+The tests require access to a working MongoDB instance.
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions to automate continuous integration and deployment preparation.
+
+The workflow is located at:
+
+`.github/workflows/csc325_ci_cd.yml`
+
+It runs automatically on pushes and pull requests targeting the `main` branch.
+
+The pipeline contains four stages:
+
+1. **Setup:** Checks out the repository and configures Python.
+2. **Dependencies:** Installs the project's required Python packages.
+3. **Test:** Runs automated Django tests using a temporary MongoDB service.
+4. **Deploy:** Prepares and uploads a downloadable application package after successful tests on pushes to `main`.
+
+The Deploy stage does not currently publish the application to a live hosting service.
+
+## GitHub Secrets
+
+The CI/CD workflow uses the `DJANGO_SECRET_KEY` repository secret.
+
+Authorized repository maintainers can configure it under:
+
+**Settings → Secrets and variables → Actions**
+
+Secret values must never be included in source code, workflow files, or Git commits.
+
+## Contributing
+
+1. Create a feature branch for your assigned task.
+2. Implement your changes and add appropriate automated tests.
+3. Commit and push your feature branch.
+4. Open a pull request targeting `main` and link the relevant Kanban issue.
+5. Confirm that the GitHub Actions checks pass.
+6. Request at least one teammate review and approval.
+7. Merge only after the required checks and approval are complete.
+
+Direct pushes to `main` should be prevented through GitHub branch protection.
+
+## AI Usage
+
+The team should document any AI tools used during development, including how generated suggestions were reviewed, tested, and corrected before being included in the project.
