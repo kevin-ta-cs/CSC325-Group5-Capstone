@@ -1,11 +1,20 @@
-from django.shortcuts import redirect, render
-from .forms import SignUpForm
-
-# Create your views here.
+from django.contrib.auth.views import LoginView
 from django.http import HttpResponse
+from django.shortcuts import redirect
+
+from .forms import SignUpForm
+from .pages import home_page, login_page, signup_page
+
 
 def home(request):
-    return render(request, 'index.html')
+    return HttpResponse(home_page(request))
+
+
+class PythonLoginView(LoginView):
+    def render_to_response(self, context, **response_kwargs):
+        return HttpResponse(
+            login_page(self.request, context["form"], context.get("next", ""))
+        )
 
 
 def signup(request):
@@ -21,4 +30,4 @@ def signup(request):
     else:
         form = SignUpForm()
 
-    return render(request, 'registration/signup.html', {'form': form})
+    return HttpResponse(signup_page(request, form))
