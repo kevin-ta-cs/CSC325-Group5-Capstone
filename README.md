@@ -56,6 +56,11 @@ Examples:
 
 - Testing Goal: the overall goal of our testing plan is to ensure that the Campus Lost & Found system is reliable, easy to use, and secure. By performing unit, integration, and system testing, we aim to identify and fix problems before the application is completed.
 
+## Python-Generated Web Pages
+
+The Django views generate the browser pages from Python source. The project does
+not use separate HTML template files.
+
 # Running the Project
 
 ## Prerequisites
