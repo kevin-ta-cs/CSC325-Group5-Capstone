@@ -111,46 +111,8 @@ python3 manage.py test myapp --noinput
 
 The tests require access to a working MongoDB instance.
 
-## CI/CD Pipeline
-
-The project uses GitHub Actions to automate continuous integration and deployment preparation.
-
-The workflow is located at:
-
-`.github/workflows/csc325_ci_cd.yml`
-
-It runs automatically on pushes and pull requests targeting the `main` branch.
-
-The pipeline contains four stages:
-
-1. **Setup:** Checks out the repository and configures Python.
-2. **Dependencies:** Installs the project's required Python packages.
-3. **Test:** Runs automated Django tests using a temporary MongoDB service.
-4. **Deploy:** Prepares and uploads a downloadable application package after successful tests on pushes to `main`.
 
 The Deploy stage does not currently publish the application to a live hosting service.
-
-## GitHub Secrets
-
-The CI/CD workflow uses the `DJANGO_SECRET_KEY` repository secret.
-
-Authorized repository maintainers can configure it under:
-
-**Settings → Secrets and variables → Actions**
-
-Secret values must never be included in source code, workflow files, or Git commits.
-
-## Contributing
-
-1. Create a feature branch for your assigned task.
-2. Implement your changes and add appropriate automated tests.
-3. Commit and push your feature branch.
-4. Open a pull request targeting `main` and link the relevant Kanban issue.
-5. Confirm that the GitHub Actions checks pass.
-6. Request at least one teammate review and approval.
-7. Merge only after the required checks and approval are complete.
-
-Direct pushes to `main` should be prevented through GitHub branch protection.
 
 ## AI Usage
 
