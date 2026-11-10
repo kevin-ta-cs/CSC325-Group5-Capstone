@@ -133,6 +133,12 @@ class AuthenticationTests(TestCase):
 			html=True,
 		)
 		self.assertContains(response, f'<form action="{reverse("logout")}" method="post">', html=False)
+		self.assertContains(
+			response,
+			'<button class="dashboard-action" type="button" disabled>Open your dashboard &nbsp;→</button>',
+			html=True,
+		)
+		self.assertNotContains(response, f'<a href="{reverse("login")}">Open your dashboard')
 
 	def test_homepage_shows_login_and_report_signup_links_when_logged_out(self):
 		response = self.client.get(reverse('home'))
@@ -142,3 +148,61 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, f'href="{reverse("signup")}"')
 		self.assertContains(response, 'Report an item')
 		self.assertContains(response, 'data-theme-toggle')
+
+	def test_homepage_light_mode_action_buttons_have_contrast(self):
+		response = self.client.get(reverse('home'))
+
+		self.assertContains(response, 'body.theme-light .pill-button {')
+		self.assertContains(response, 'border-color: var(--action-green); background: var(--action-green); color: #fff;')
+		self.assertContains(response, 'body.theme-light .pill-button.outline {')
+		self.assertContains(response, 'border-color: var(--action-green); background: #fff; color: var(--action-green);')
+		self.assertContains(
+			response,
+			'.browse-link { display: flex; width: fit-content; margin: 28px auto 0; color: var(--white); font-weight: 750; text-decoration: none; }',
+		)
+
+	def test_homepage_dark_mode_surfaces_are_dark(self):
+		response = self.client.get(reverse('home'))
+
+		self.assertContains(response, 'body.theme-dark {')
+		self.assertContains(response, '--paper: #111918;')
+		self.assertContains(response, 'body.theme-dark .step { background: #192321; }')
+		self.assertContains(response, 'body.theme-dark .filters { background: #192321; color: #eef5f3; }')
+		self.assertContains(response, 'border-color: #465451; background-color: #111918; color: #eef5f3; color-scheme: dark;')
+		self.assertContains(response, 'body.theme-dark .report-card { border-color: #34423f; background: #192321; color: #eef5f3; }')
+		self.assertContains(response, 'body.theme-dark .dashboard-card.secondary {')
+		self.assertContains(response, 'body.theme-dark .dashboard-card:not(.secondary) { background: #192321; }')
+
+	def test_homepage_dashboard_cards_match_in_light_mode(self):
+		response = self.client.get(reverse('home'))
+
+		self.assertContains(response, 'body.theme-light .dashboard-card:not(.secondary) {')
+		self.assertContains(response, 'border: 1px solid #cfe7e1; background: #eaf7f4; color: #163d38;')
+		self.assertContains(response, 'body.theme-light .dashboard-card:not(.secondary) p { color: #596b67; }')
+		self.assertContains(response, 'body.theme-light .dashboard-card:not(.secondary) a,')
+
+	def test_report_filter_dropdowns_have_right_padding(self):
+		response = self.client.get(reverse('home'))
+
+		self.assertContains(response, '.filters select {')
+		self.assertContains(response, 'appearance: none;')
+		self.assertContains(response, 'background-position: calc(100% - 17px) 50%, calc(100% - 13px) 50%;')
+
+	def test_match_card_matches_dashboard_surfaces_in_both_themes(self):
+		response = self.client.get(reverse('home'))
+
+		self.assertContains(response, 'background: #192321; color: #eef5f3;')
+		self.assertContains(
+			response,
+			'body.theme-light .match-card {\n      border-color: #cfe7e1; background: #eaf7f4; color: #163d38;',
+		)
+		self.assertContains(response, 'body.theme-light .match-card p { color: #163d38; }')
+		self.assertContains(response, 'body.theme-light .match-card .match-score { color: #596b67; }')
+
+	def test_account_dark_mode_surfaces_are_dark(self):
+		response = self.client.get(reverse('login'))
+
+		self.assertContains(response, 'body.theme-dark .auth-panel {')
+		self.assertContains(response, 'body.theme-dark .form-panel { background: #111918; }')
+		self.assertContains(response, 'body.theme-dark .auth-tabs { background: #202b29; }')
+		self.assertContains(response, 'body.theme-dark .auth-input {')
