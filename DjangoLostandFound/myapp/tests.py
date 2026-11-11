@@ -141,11 +141,17 @@ class AuthenticationTests(TestCase):
 		response = self.client.get(reverse('user_dashboard'))
 
 		self.assertContains(response, 'User dashboard')
+		self.assertContains(response, f'Welcome back, {user.username}.')
 		self.assertContains(response, user.username)
 		self.assertContains(response, user.email)
 		self.assertContains(response, 'Member since')
 		self.assertContains(response, 'name="username"')
 		self.assertContains(response, 'name="csrfmiddlewaretoken"')
+		self.assertContains(response, 'class="dashboard-stats"')
+		self.assertContains(response, 'Your reports')
+		self.assertContains(response, 'Smart matches')
+		self.assertContains(response, 'Claims tracked')
+		self.assertContains(response, 'Item status tracking')
 
 	def test_dashboard_updates_the_authenticated_users_username(self):
 		user = self.create_user()
@@ -311,11 +317,15 @@ class FoundItemReportTests(TestCase):
 		response = self.client.get(reverse('found_report'))
 
 		self.assertContains(response, 'Report a found item')
+		self.assertContains(response, 'class="report-layout"')
+		self.assertContains(response, 'The right details create better matches.')
+		self.assertContains(response, 'class="primary-nav"')
 		self.assertContains(response, '<select name="location"', html=False)
 		self.assertContains(response, 'name="date_found"')
 		self.assertContains(response, 'type="date"')
 		self.assertContains(response, 'name="time_found"')
 		self.assertContains(response, 'type="time"')
+		self.assertContains(response, '>Publish report</button>', html=False)
 		for category in ('Accessories', 'Bags &amp; Luggage', 'Electronics', 'Keys'):
 			with self.subTest(category=category):
 				self.assertContains(response, category)
@@ -452,6 +462,8 @@ class FoundItemReportTests(TestCase):
 				)
 				self.assertContains(detail_response, report['building'])
 				self.assertContains(detail_response, 'item-detail-card')
+				self.assertContains(detail_response, 'class="primary-nav"')
+				self.assertContains(detail_response, 'site-footer')
 				self.assertContains(
 					detail_response,
 					'This sample listing has no reporter account.',
@@ -587,7 +599,7 @@ class FoundItemReportTests(TestCase):
 
 		response = self.client.get(reverse('user_dashboard'))
 
-		self.assertContains(response, 'Your found-item reports')
+		self.assertContains(response, 'Your reports')
 		self.assertContains(response, 'My blue umbrella')
 		self.assertNotContains(response, "Someone else's keys")
 		self.assertContains(

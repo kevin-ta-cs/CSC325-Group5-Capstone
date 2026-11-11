@@ -794,15 +794,23 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
     a { color: var(--accent); }
     button, textarea { font: inherit; }
     .site-header { background: #090a0b; color: #fff; }
+    .wrap { width: min(1280px, calc(100% - 64px)); margin-inline: auto; }
     .header-inner {
-      display: flex; width: min(1440px, calc(100% - 48px)); min-height: 68px;
-      align-items: center; justify-content: space-between; gap: 24px; margin-inline: auto;
+      display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px;
     }
-    .brand { color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
-    .header-actions { display: flex; align-items: center; gap: 20px; }
-    .header-actions a { color: #fff; font-weight: 650; text-decoration: none; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .brand-mark {
+      position: relative; display: grid; width: 36px; height: 36px; place-items: center;
+      border-radius: 12px; background: #075d56; color: #fff; font-size: 0;
+    }
+    .brand-mark::before { width: 13px; height: 13px; transform: translate(-2px, -2px); border: 2.5px solid currentColor; border-radius: 50%; content: ""; }
+    .brand-mark::after { position: absolute; width: 7px; height: 2.5px; transform: translate(5px, 5px) rotate(45deg); border-radius: 2px; background: currentColor; content: ""; }
+    .primary-nav, .header-actions { display: flex; align-items: center; gap: 20px; }
+    .primary-nav a, .header-actions a { color: #fff; font-weight: 650; text-decoration: none; }
+    .primary-nav a:hover, .header-actions a:hover { color: #8ce8d8; }
+    .header-actions .header-cta { padding: 9px 18px; border-radius: 999px; background: #fff; color: #064d47; }
     .theme-toggle { padding: 0; border: 0; background: transparent; color: #fff; font-size: 1.2rem; cursor: pointer; }
-    main { width: min(1440px, calc(100% - 48px)); margin: 30px auto 80px; }
+    main { width: min(1280px, calc(100% - 64px)); margin: 30px auto 80px; }
     .back-link { display: inline-flex; margin-bottom: 20px; color: #fff; font-weight: 700; text-decoration: none; }
     body.theme-light .back-link { color: var(--accent); }
     .detail-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr); align-items: start; gap: 28px; }
@@ -852,29 +860,57 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
       font-weight: 800; text-align: center; text-decoration: none; cursor: pointer;
     }
     .request-private-note, .request-blocked { margin: 14px 0 0; color: var(--muted); font-size: .85rem; }
+    .site-footer { background: #090a0b; color: #b6c0be; }
+    .footer-inner { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 40px; padding-block: 42px 24px; }
+    .footer-brand { color: #fff; font-size: 1.15rem; font-weight: 800; }
+    .footer-about p { max-width: 360px; margin: 10px 0 0; color: #a4afac; font-size: .88rem; }
+    .footer-column h2 { margin: 0 0 12px; color: #fff; font-size: .86rem; }
+    .footer-column a { display: block; margin: 7px 0; color: #b6c0be; font-size: .85rem; text-decoration: none; }
+    .footer-column a:hover { color: #8ce8d8; }
+    .copyright { padding: 16px 0 22px; border-top: 1px solid #252a2a; color: #9ba5a3; font-size: .78rem; text-align: center; }
     @media (max-width: 900px) {
       .detail-grid { grid-template-columns: 1fr; }
       .item-image { min-height: 300px; }
     }
-    @media (max-width: 560px) {
-      .header-inner { flex-wrap: wrap; padding-block: 12px; }
+    @media (max-width: 850px) {
+      .primary-nav, .header-actions { gap: 14px; }
+    }
+    @media (max-width: 650px) {
+      .wrap, main { width: calc(100% - 36px); }
+      .header-inner { flex-wrap: wrap; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 8px; }
+      .primary-nav a, .header-actions a { font-size: .76rem; }
       .header-actions { flex-wrap: wrap; gap: 12px; }
-      main { width: min(100% - 28px, 620px); margin-top: 22px; }
+      main { margin-top: 22px; }
       .detail-grid { gap: 18px; }
       .item-image { min-height: 230px; }
       .item-facts { grid-template-columns: 1fr; }
+      .footer-inner { grid-template-columns: 1fr 1fr; gap: 24px; }
+      .footer-about { grid-column: 1 / -1; }
+    }
+    @media (max-width: 390px) {
+      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .header-actions a:not(.header-cta) { font-size: .8rem; }
+      .footer-inner { grid-template-columns: 1fr; }
+      .footer-about { grid-column: auto; }
     }
   </style>
 </head>
 <body class="theme-dark">
   <header class="site-header">
-    <div class="header-inner">
-      <a class="brand" href="__HOME_URL__" aria-label="FindIt home">FindIt</a>
+    <div class="wrap header-inner">
+      <a class="brand" href="__HOME_URL__" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <a href="__HOME_URL__#how-it-works">How it works</a>
+        <a href="__LOST_REPORT_URL__">Report lost</a>
+        <a href="__FOUND_REPORT_URL__">Report found</a>
+        <a href="__HOME_URL__#recent-items">Browse items</a>
+      </nav>
       <nav class="header-actions" aria-label="Primary navigation">
         <button class="theme-toggle" type="button" data-theme-toggle
           aria-label="Switch to light mode" aria-pressed="false">☀</button>
-        <a href="__HOME_URL__#recent-items">Browse items</a>
         <a href="__DASHBOARD_URL__">Dashboard</a>
+        <a class="header-cta" href="__FOUND_REPORT_URL__">Report an item</a>
       </nav>
     </div>
   </header>
@@ -906,6 +942,26 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
       </aside>
     </div>
   </main>
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <div class="footer-about">
+        <div class="footer-brand">⌕ &nbsp; FindIt</div>
+        <p>A campus-powered network that helps lost belongings make their way home safely.</p>
+      </div>
+      <div class="footer-column">
+        <h2>Take action</h2>
+        <a href="__LOST_REPORT_URL__">Report a lost item</a>
+        <a href="__FOUND_REPORT_URL__">Report a found item</a>
+        <a href="__HOME_URL__#recent-items">Search the catalog</a>
+      </div>
+      <div class="footer-column">
+        <h2>Account</h2>
+        <a href="__DASHBOARD_URL__">Your dashboard</a>
+        <a href="/admin/">Staff administration</a>
+      </div>
+    </div>
+    <div class="wrap copyright">© __YEAR__ FindIt. Built for safer campus returns.</div>
+  </footer>
   __THEME_SCRIPT__
 </body>
 </html>"""
@@ -1010,6 +1066,9 @@ def found_item_detail_page(request, item, form, request_status):
             if request.user.is_authenticated
             else reverse("login")
         ),
+        "__LOST_REPORT_URL__": reverse("signup"),
+        "__FOUND_REPORT_URL__": reverse("found_report"),
+        "__YEAR__": str(date.today().year),
         "__ITEM_MEDIA__": str(item_media),
         "__ITEM_TYPE__": format_html("{}", item_details["type"]),
         "__ITEM_TITLE__": format_html("{}", item_details["title"]),
@@ -1038,96 +1097,193 @@ FOUND_ITEM_PAGE = """<!doctype html>
   <title>__PAGE_TITLE__ | FindIt</title>
   <style>
     :root {
-      color-scheme: dark;
-      --paper: #111918;
-      --card: #192321;
-      --ink: #eef5f3;
-      --muted: #b3c0bd;
-      --line: #34423f;
-      --accent: #8ce8d8;
-      --button: #66d8c6;
-      --button-ink: #082f2b;
+      color-scheme: light;
+      --teal: #014d48;
+      --teal-bright: #78ddca;
+      --paper: #fff;
+      --ink: #171b1b;
+      --muted: #64716e;
+      --line: #e4e6e5;
+      --accent: #087c70;
+      --action-green: #014d48;
     }
     * { box-sizing: border-box; }
     body {
-      min-height: 100vh; margin: 0; background: var(--paper); color: var(--ink);
+      min-height: 100vh; margin: 0; background: var(--teal); color: #fff;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       line-height: 1.6;
     }
     body.theme-light {
-      color-scheme: light; --paper: #f3f8f6; --card: #fff; --ink: #163d38;
-      --muted: #596b67; --line: #dce8e5; --accent: #087c70; --button: #003e3a; --button-ink: #fff;
+      color-scheme: light; --teal: #e5f4f0; --teal-bright: #087c70;
+      --ink: #143b37; --muted: #596b67; --line: #dce8e5; --accent: #087c70;
+      background: var(--teal); color: var(--ink);
     }
     a { color: var(--accent); }
     button, input, select, textarea { font: inherit; }
-    .site-header { background: #090a0b; color: #fff; }
+    .wrap { width: min(1280px, calc(100% - 64px)); margin-inline: auto; }
+    .site-header { position: sticky; z-index: 10; top: 0; background: #090a0b; color: #fff; }
     .header-inner {
-      display: flex; width: min(1120px, calc(100% - 40px)); min-height: 68px;
-      align-items: center; justify-content: space-between; gap: 20px; margin-inline: auto;
+      display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px;
     }
-    .brand { color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
-    .header-actions { display: flex; align-items: center; gap: 18px; }
-    .header-actions a { color: #fff; font-weight: 650; text-decoration: none; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .brand-mark {
+      position: relative; display: grid; width: 36px; height: 36px; place-items: center;
+      border-radius: 12px; background: #075d56; color: #fff; font-size: 0;
+    }
+    .brand-mark::before { width: 13px; height: 13px; transform: translate(-2px, -2px); border: 2.5px solid currentColor; border-radius: 50%; content: ""; }
+    .brand-mark::after { position: absolute; width: 7px; height: 2.5px; transform: translate(5px, 5px) rotate(45deg); border-radius: 2px; background: currentColor; content: ""; }
+    .primary-nav, .header-actions { display: flex; align-items: center; gap: 22px; }
+    .primary-nav a, .header-actions a { color: #f7f7f7; font-size: .9rem; font-weight: 650; text-decoration: none; }
+    .primary-nav a:hover, .header-actions a:hover { color: var(--teal-bright); }
+    .header-actions form { margin: 0; }
+    .header-actions form button { padding: 0; border: 0; background: none; color: #fff; font-weight: 650; cursor: pointer; }
     .theme-toggle { padding: 0; border: 0; background: transparent; color: #fff; font-size: 1.2rem; cursor: pointer; }
-    main { width: min(760px, calc(100% - 40px)); margin: 48px auto 80px; }
-    .eyebrow { margin: 0 0 6px; color: var(--accent); font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.04em; line-height: 1.15; }
-    .intro { margin: 10px 0 26px; color: var(--muted); }
-    .report-card { padding: clamp(22px, 5vw, 36px); border: 1px solid var(--line); border-radius: 22px; background: var(--card); }
+    .header-actions .header-cta {
+      padding: 9px 18px; border-radius: 999px; background: #fff; color: var(--action-green);
+      font-weight: 750;
+    }
+    main { width: min(1280px, calc(100% - 64px)); margin: 0 auto; padding: 52px 0 76px; }
+    .report-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(480px, 1.1fr); align-items: center; gap: 56px; }
+    .report-copy { max-width: 560px; }
+    .eyebrow { margin: 0 0 14px; color: var(--teal-bright); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { max-width: 560px; margin: 0 0 16px; font-size: clamp(2.4rem, 4vw, 3.5rem); letter-spacing: -.045em; line-height: 1.08; }
+    .intro { margin: 0 0 28px; color: rgba(255,255,255,.82); font-size: 1.02rem; }
+    body.theme-light .intro { color: rgba(20,59,55,.78); }
+    .report-benefits { display: grid; gap: 12px; }
+    .report-benefits p { display: flex; align-items: center; gap: 11px; margin: 0; color: rgba(255,255,255,.92); font-weight: 650; }
+    body.theme-light .report-benefits p { color: #24514b; }
+    .report-benefits span { color: var(--teal-bright); font-size: 1.1rem; }
+    .report-card { padding: clamp(26px, 4vw, 42px); border: 1px solid rgba(255,255,255,.9); border-radius: 24px; background: var(--paper); color: var(--ink); box-shadow: 0 24px 70px rgba(0,0,0,.14); }
+    .report-form-heading { margin: 0 0 22px; color: var(--ink); font-size: 1.55rem; letter-spacing: -.03em; }
+    .report-form-intro { margin: -12px 0 22px; color: var(--muted); font-size: .9rem; }
+    .report-type { display: inline-flex; margin: 0 0 12px; padding: 6px 12px; border-radius: 999px; background: #eaf7f4; color: #087c70; font-size: .78rem; font-weight: 800; }
     .report-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
     .form-field { min-width: 0; }
     .form-field.full { grid-column: 1 / -1; }
-    .form-field label { display: block; margin-bottom: 7px; font-weight: 700; }
+    .form-field label { display: block; margin-bottom: 6px; color: #414648; font-size: .88rem; font-weight: 700; }
     .report-input {
-      display: block; width: 100%; min-height: 48px; padding: 10px 12px;
-      border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink);
+      display: block; width: 100%; min-height: 48px; padding: 11px 13px;
+      border: 1px solid #dedfdf; border-radius: 12px; background: #fff; color: #27292a;
     }
-    textarea.report-input { min-height: 120px; resize: vertical; }
-    .report-input:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
-    .field-errors { margin: 6px 0 0; padding-left: 20px; color: #ffaaa2; font-size: .86rem; }
-    .error-summary { grid-column: 1 / -1; margin: 0; color: #ffaaa2; }
-    .notice { margin-bottom: 18px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+    textarea.report-input { min-height: 116px; resize: vertical; }
+    .report-input:focus { border-color: #168b7d; outline: 3px solid rgba(22,139,125,.14); }
+    .field-errors { margin: 6px 0 0; padding-left: 20px; color: #a52e28; font-size: .84rem; }
+    .error-summary { grid-column: 1 / -1; margin: 0; color: #a52e28; }
+    .notice { margin: 0 0 18px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: #f5faf8; color: var(--ink); }
     .submit-button {
       grid-column: 1 / -1; min-height: 48px; padding: 12px 20px; border: 0; border-radius: 12px;
-      background: var(--button); color: var(--button-ink); font-weight: 800; cursor: pointer;
+      background: var(--action-green); color: #fff; font-weight: 800; cursor: pointer;
     }
-    .form-footer { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .88rem; }
+    .submit-button:hover { background: #003e3a; }
+    .form-footer { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .84rem; }
+    .site-footer { background: #090a0b; color: #b6c0be; }
+    .footer-inner { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 40px; padding-block: 42px 24px; }
+    .footer-brand { color: #fff; font-size: 1.15rem; font-weight: 800; }
+    .footer-about p { max-width: 360px; margin: 10px 0 0; color: #a4afac; font-size: .88rem; }
+    .footer-column h2 { margin: 0 0 12px; color: #fff; font-size: .86rem; }
+    .footer-column a { display: block; margin: 7px 0; color: #b6c0be; font-size: .85rem; text-decoration: none; }
+    .footer-column a:hover { color: #8ce8d8; }
+    .copyright { padding: 16px 0 22px; border-top: 1px solid #252a2a; color: #9ba5a3; font-size: .78rem; text-align: center; }
+    @media (max-width: 900px) {
+      .report-layout { grid-template-columns: 1fr; gap: 32px; }
+      .report-copy { max-width: 720px; }
+      .report-card { max-width: 760px; }
+    }
+    @media (max-width: 850px) {
+      .primary-nav, .header-actions { gap: 14px; }
+    }
+    @media (max-width: 650px) {
+      .wrap, main { width: calc(100% - 36px); }
+      .header-inner { flex-wrap: wrap; gap: 10px; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 8px; }
+      .primary-nav a, .header-actions a { font-size: .78rem; }
+      .header-actions { gap: 12px; }
+      .header-actions .header-cta { padding: 8px 11px; }
+      main { padding: 34px 0 48px; }
+      .report-card { padding: 24px; }
+      .footer-inner { grid-template-columns: 1fr 1fr; gap: 24px; }
+      .footer-about { grid-column: 1 / -1; }
+    }
     @media (max-width: 560px) {
-      .header-inner { flex-wrap: wrap; padding-block: 12px; }
-      .header-actions { flex-wrap: wrap; gap: 12px; }
-      main { margin-top: 32px; }
       .report-form { grid-template-columns: 1fr; }
       .form-field.full, .submit-button, .form-footer, .error-summary { grid-column: auto; }
+    }
+    @media (max-width: 390px) {
+      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .header-actions a:not(.header-cta) { font-size: .8rem; }
+      .footer-inner { grid-template-columns: 1fr; }
+      .footer-about { grid-column: auto; }
     }
   </style>
 </head>
 <body class="theme-dark">
   <header class="site-header">
-    <div class="header-inner">
-      <a class="brand" href="__HOME_URL__" aria-label="FindIt home">FindIt</a>
-      <nav class="header-actions" aria-label="Page navigation">
+    <div class="wrap header-inner">
+      <a class="brand" href="__HOME_URL__" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <a href="__HOME_URL__#how-it-works">How it works</a>
+        <a href="__LOST_REPORT_URL__">Report lost</a>
+        <a href="__FOUND_REPORT_URL__">Report found</a>
+        <a href="__HOME_URL__#recent-items">Browse items</a>
+      </nav>
+      <nav class="header-actions" aria-label="Account navigation">
         <button class="theme-toggle" type="button" data-theme-toggle
           aria-label="Switch to light mode" aria-pressed="false">☀</button>
         <a href="__DASHBOARD_URL__">Dashboard</a>
-        <a href="__HOME_URL__">Home</a>
+        <form action="__LOGOUT_URL__" method="post">__CSRF_INPUT__
+          <button type="submit">Log out</button>
+        </form>
+        <a class="header-cta" href="__FOUND_REPORT_URL__">Report an item</a>
       </nav>
     </div>
   </header>
   <main>
-    <p class="eyebrow">Help return a belonging</p>
-    <h1>__PAGE_TITLE__</h1>
-    <p class="intro">__FORM_INTRO__</p>
-    __NOTICES__
-    <section class="report-card" aria-label="Found item details">
-      <form class="report-form" method="post">
-        __CSRF_INPUT__
-        __ERROR_SUMMARY__
-        __FORM_FIELDS__
-        <p class="form-footer">Your report will be listed with its category, location, and found date and time.</p>
-        <button class="submit-button" type="submit">__SUBMIT_LABEL__</button>
-      </form>
-    </section>
+    <div class="report-layout">
+      <section class="report-copy" aria-labelledby="report-heading">
+        <p class="eyebrow">New campus report</p>
+        <h1 id="report-heading">The right details create better matches.</h1>
+        <p class="intro">Select a campus building and include distinguishing details. Your report helps the campus community reconnect belongings with their owners.</p>
+        <div class="report-benefits">
+          <p><span aria-hidden="true">⌖</span>Campus-specific location details</p>
+          <p><span aria-hidden="true">✓</span>Owner-only editing and deletion</p>
+          <p><span aria-hidden="true">◈</span>Private information requests</p>
+        </div>
+      </section>
+      <section class="report-card" aria-label="Found item details">
+        <p class="report-type">Found item</p>
+        <h2 class="report-form-heading">__PAGE_TITLE__</h2>
+        <p class="report-form-intro">__FORM_INTRO__</p>
+        __NOTICES__
+        <form class="report-form" method="post">
+          __CSRF_INPUT__
+          __ERROR_SUMMARY__
+          __FORM_FIELDS__
+          <p class="form-footer">Your report will be listed with its category, location, and found date and time.</p>
+          <button class="submit-button" type="submit">__SUBMIT_LABEL__</button>
+        </form>
+      </section>
+    </div>
   </main>
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <div class="footer-about">
+        <div class="footer-brand">⌕ &nbsp; FindIt</div>
+        <p>A campus-powered network that helps lost belongings make their way home safely.</p>
+      </div>
+      <div class="footer-column">
+        <h2>Take action</h2>
+        <a href="__LOST_REPORT_URL__">Report a lost item</a>
+        <a href="__FOUND_REPORT_URL__">Report a found item</a>
+        <a href="__HOME_URL__#recent-items">Search the catalog</a>
+      </div>
+      <div class="footer-column">
+        <h2>Account</h2>
+        <a href="__DASHBOARD_URL__">Your dashboard</a>
+        <a href="/admin/">Staff administration</a>
+      </div>
+    </div>
+    <div class="wrap copyright">© __YEAR__ FindIt. Built for safer campus returns.</div>
+  </footer>
   __THEME_SCRIPT__
 </body>
 </html>"""
@@ -1191,6 +1347,8 @@ def found_item_page(request, form, editing=False):
     for placeholder, value in (
         ("__HOME_URL__", reverse("home")),
         ("__DASHBOARD_URL__", reverse("user_dashboard")),
+        ("__LOGOUT_URL__", reverse("logout")),
+        ("__LOST_REPORT_URL__", reverse("signup")),
         ("__PAGE_TITLE__", "Edit found item" if editing else "Report a found item"),
         (
             "__FORM_INTRO__",
@@ -1202,12 +1360,13 @@ def found_item_page(request, form, editing=False):
         ),
         (
             "__SUBMIT_LABEL__",
-            "Save changes" if editing else "Submit found item report",
+            "Save changes" if editing else             "Publish report",
         ),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__ERROR_SUMMARY__", str(error_summary)),
         ("__FORM_FIELDS__", str(form_fields)),
         ("__NOTICES__", str(notices)),
+        ("__YEAR__", str(date.today().year)),
         ("__THEME_SCRIPT__", _theme_script()),
     ):
         page = page.replace(placeholder, value)
@@ -1245,7 +1404,7 @@ def _reported_item_card(request, item):
 def _reported_items_markup(request, found_items):
     if not found_items:
         return format_html(
-            '<p class="empty-reports">You have not reported any found items yet. '
+            '<p class="empty-reports">You have not published a report yet. '
             '<a href="{}">Report a found item</a>.</p>',
             reverse("found_report"),
         )
@@ -1288,79 +1447,100 @@ USER_DASHBOARD_PAGE = """<!doctype html>
   <title>User dashboard | FindIt</title>
   <style>
     :root {
-      color-scheme: dark;
-      --paper: #111918;
-      --card: #192321;
-      --ink: #eef5f3;
-      --muted: #b3c0bd;
-      --line: #34423f;
-      --accent: #8ce8d8;
-      --button: #66d8c6;
-      --button-ink: #082f2b;
-      --danger: #ffaaa2;
+      color-scheme: light;
+      --teal: #014d48;
+      --paper: #fff;
+      --card: #fff;
+      --ink: #171b1b;
+      --muted: #64716e;
+      --line: #e4e6e5;
+      --accent: #087c70;
+      --button: #014d48;
+      --button-ink: #fff;
+      --danger: #b42318;
+      --teal-bright: #8ce8d8;
     }
     * { box-sizing: border-box; }
     body {
       min-height: 100vh;
       margin: 0;
-      background: var(--paper);
-      color: var(--ink);
+      background: var(--teal);
+      color: #fff;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       line-height: 1.6;
     }
     body.theme-light {
       color-scheme: light;
-      --paper: #f3f8f6;
+      --teal: #e5f4f0;
+      --paper: #fff;
       --card: #fff;
-      --ink: #163d38;
+      --ink: #143b37;
       --muted: #596b67;
       --line: #dce8e5;
       --accent: #087c70;
       --button: #003e3a;
       --button-ink: #fff;
       --danger: #b42318;
+      --teal-bright: #087c70;
+      background: var(--teal);
+      color: var(--ink);
     }
     a { color: var(--accent); }
     button, input { font: inherit; }
-    .site-header { background: #090a0b; color: #fff; }
+    .wrap { width: min(1280px, calc(100% - 64px)); margin-inline: auto; }
+    .site-header { position: sticky; z-index: 10; top: 0; background: #090a0b; color: #fff; }
     .header-inner {
-      display: flex;
-      width: min(1120px, calc(100% - 40px));
-      min-height: 68px;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      margin-inline: auto;
+      display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px;
     }
-    .brand { color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
-    .header-actions { display: flex; align-items: center; gap: 18px; }
-    .header-actions a { color: #fff; font-weight: 650; text-decoration: none; }
-    .header-actions a:hover { color: #8ce8d8; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .brand-mark {
+      position: relative; display: grid; width: 36px; height: 36px; place-items: center;
+      border-radius: 12px; background: #075d56; color: #fff; font-size: 0;
+    }
+    .brand-mark::before { width: 13px; height: 13px; transform: translate(-2px, -2px); border: 2.5px solid currentColor; border-radius: 50%; content: ""; }
+    .brand-mark::after { position: absolute; width: 7px; height: 2.5px; transform: translate(5px, 5px) rotate(45deg); border-radius: 2px; background: currentColor; content: ""; }
+    .primary-nav, .header-actions { display: flex; align-items: center; gap: 22px; }
+    .primary-nav a, .header-actions a { color: #f7f7f7; font-size: .9rem; font-weight: 650; text-decoration: none; }
+    .primary-nav a:hover, .header-actions a:hover { color: #8ce8d8; }
     .header-actions form { margin: 0; }
-    .header-actions button, .theme-toggle {
-      padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer;
-    }
+    .header-actions button, .theme-toggle { padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer; }
     .theme-toggle { font-size: 1.2rem; }
-    main { width: min(900px, calc(100% - 40px)); margin: 52px auto 80px; }
-    .eyebrow { margin-bottom: 6px; color: var(--accent); font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.04em; line-height: 1.15; }
-    .intro { margin: 10px 0 28px; color: var(--muted); }
-    .notice { margin-bottom: 20px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
-    .dashboard-card {
-      padding: clamp(22px, 5vw, 36px);
-      border: 1px solid var(--line);
-      border-radius: 22px;
-      background: var(--card);
+    .header-actions .header-cta { padding: 9px 18px; border-radius: 999px; background: #fff; color: #014d48; font-weight: 750; }
+    main { width: min(1280px, calc(100% - 64px)); margin: 0 auto; padding: 34px 0 80px; }
+    .dashboard-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
+    .eyebrow { margin: 0 0 5px; color: var(--teal-bright); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2.2rem, 4vw, 3rem); letter-spacing: -.04em; line-height: 1.12; }
+    .intro { margin: 8px 0 0; color: rgba(255,255,255,.82); }
+    body.theme-light .intro { color: rgba(20,59,55,.78); }
+    .new-report {
+      display: inline-flex; min-height: 46px; align-items: center; justify-content: center;
+      gap: 8px; padding: 10px 18px; border-radius: 999px; background: #fff; color: #014d48;
+      font-weight: 800; text-decoration: none; white-space: nowrap;
     }
-    .dashboard-card h2 { margin: 0 0 20px; font-size: 1.35rem; }
-    .reported-items { margin-top: 24px; }
+    .dashboard-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 22px; }
+    .stat-card { min-height: 96px; padding: 16px 20px; border: 1px solid rgba(255,255,255,.12); border-radius: 14px; background: rgba(255,255,255,.1); }
+    .stat-icon { display: block; color: var(--teal-bright); font-size: .95rem; line-height: 1; }
+    .stat-card strong { display: block; margin-top: 7px; font-size: 1.5rem; line-height: 1.2; }
+    .stat-card .stat-label { color: rgba(255,255,255,.78); font-size: .88rem; }
+    body.theme-light .stat-card { border-color: #cfe7e1; background: #eaf7f4; color: #163d38; }
+    body.theme-light .stat-card .stat-label { color: #596b67; }
+    .notice { margin-bottom: 20px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); }
+    .dashboard-card {
+      padding: clamp(22px, 4vw, 34px); border: 1px solid #eef0ef;
+      border-radius: 22px; background: var(--card); color: var(--ink);
+      box-shadow: 0 18px 45px rgba(0,0,0,.1);
+    }
+    .dashboard-card h2 { margin: 0; font-size: 1.35rem; }
+    .account-details h2 { margin-bottom: 20px; }
+    .dashboard-card .section-eyebrow { margin: 0 0 3px; color: #087c70; font-size: .7rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    .reported-items, .account-details, .requests-section { margin-top: 24px; }
     .reports-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     .reports-heading-row h2 { margin: 0; }
     .reports-heading-row > a { font-weight: 700; }
     .report-list { display: grid; gap: 14px; margin-top: 20px; }
     .owned-report {
       display: flex; align-items: center; justify-content: space-between; gap: 20px;
-      padding: 16px; border: 1px solid var(--line); border-radius: 14px;
+      padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #fff;
     }
     .owned-report-content { min-width: 0; }
     .owned-report h3 { margin: 0 0 4px; font-size: 1.05rem; }
@@ -1375,24 +1555,25 @@ USER_DASHBOARD_PAGE = """<!doctype html>
       font-weight: 750; cursor: pointer;
     }
     .delete-button:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
-    .empty-reports { margin: 18px 0 0; color: var(--muted); }
+    .empty-reports { display: grid; min-height: 64px; place-items: center; margin: 16px 0 0; padding: 16px; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); text-align: center; }
     .private-request-list { display: grid; gap: 14px; }
-    .private-request { padding: 16px; border: 1px solid var(--line); border-radius: 14px; }
+    .private-request { padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
     .private-request-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
     .private-request h3 { margin: 0; font-size: 1rem; }
     .private-request time, .private-request-sender { color: var(--muted); font-size: .85rem; }
     .private-request-sender { margin: 5px 0 10px; }
     .private-request-message { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
     .empty-requests { margin: 0; color: var(--muted); }
-    .profile-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0; }
-    .profile-details div { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; }
+    .requests-section > .private-request-list { margin-top: 16px; }
+    .profile-details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0; }
+    .profile-details div { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
     .profile-details dt { margin-bottom: 4px; color: var(--muted); font-size: .82rem; font-weight: 700; }
     .profile-details dd { overflow-wrap: anywhere; margin: 0; font-weight: 650; }
     .username-form { max-width: 540px; margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--line); }
     .username-form label { display: block; margin-bottom: 7px; font-weight: 700; }
     .text-input {
       width: 100%; min-height: 48px; padding: 10px 12px;
-      border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink);
+      border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink);
     }
     .text-input:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
     .field-help, .field-errors { margin: 6px 0 0; color: var(--muted); font-size: .85rem; }
@@ -1403,41 +1584,91 @@ USER_DASHBOARD_PAGE = """<!doctype html>
       border: 0; border-radius: 999px; background: var(--button); color: var(--button-ink);
       font-weight: 800; cursor: pointer;
     }
+    .dashboard-feature { margin-top: 24px; padding: 28px 32px; border-radius: 22px; background: #090a0b; color: #fff; }
+    .dashboard-feature .section-eyebrow { margin: 0 0 5px; color: #8ce8d8; font-size: .7rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    .dashboard-feature h2 { margin: 0 0 8px; font-size: 1.3rem; }
+    .dashboard-feature p:last-child { margin: 0; color: #b6c0be; }
+    .site-footer { background: #090a0b; color: #b6c0be; }
+    .footer-inner { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 40px; padding-block: 42px 24px; }
+    .footer-brand { color: #fff; font-size: 1.15rem; font-weight: 800; }
+    .footer-about p { max-width: 360px; margin: 10px 0 0; color: #a4afac; font-size: .88rem; }
+    .footer-column h2 { margin: 0 0 12px; color: #fff; font-size: .86rem; }
+    .footer-column a { display: block; margin: 7px 0; color: #b6c0be; font-size: .85rem; text-decoration: none; }
+    .footer-column a:hover { color: #8ce8d8; }
+    .copyright { padding: 16px 0 22px; border-top: 1px solid #252a2a; color: #9ba5a3; font-size: .78rem; text-align: center; }
     .submit-button:focus-visible, .header-actions a:focus-visible,
     .header-actions button:focus-visible, .brand:focus-visible {
       outline: 3px solid #8ce8d8; outline-offset: 3px;
     }
     @media (max-width: 560px) {
-      .header-inner { flex-wrap: wrap; padding-block: 12px; }
+      .wrap, main { width: calc(100% - 36px); }
+      .header-inner { flex-wrap: wrap; gap: 10px; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 8px; }
+      .primary-nav a, .header-actions a { font-size: .76rem; }
       .header-actions { flex-wrap: wrap; gap: 12px; }
-      main { margin-top: 32px; }
+      .dashboard-heading { align-items: flex-start; flex-direction: column; }
+      .dashboard-stats { grid-template-columns: 1fr; }
       .profile-details { grid-template-columns: 1fr; }
       .owned-report { align-items: flex-start; flex-direction: column; }
       .reports-heading-row { align-items: flex-start; flex-direction: column; }
       .private-request-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
+      .footer-inner { grid-template-columns: 1fr 1fr; gap: 24px; }
+      .footer-about { grid-column: 1 / -1; }
+    }
+    @media (max-width: 390px) {
+      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .header-actions a:not(.header-cta) { font-size: .8rem; }
+      .footer-inner { grid-template-columns: 1fr; }
+      .footer-about { grid-column: auto; }
     }
   </style>
 </head>
 <body class="theme-dark">
   <header class="site-header">
-    <div class="header-inner">
-      <a class="brand" href="__HOME_URL__" aria-label="FindIt home">FindIt</a>
+    <div class="wrap header-inner">
+      <a class="brand" href="__HOME_URL__" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <a href="__HOME_URL__#how-it-works">How it works</a>
+        <a href="__LOST_REPORT_URL__">Report lost</a>
+        <a href="__FOUND_REPORT_URL__">Report found</a>
+        <a href="__HOME_URL__#recent-items">Browse items</a>
+      </nav>
       <nav class="header-actions" aria-label="Account navigation">
         <button class="theme-toggle" type="button" data-theme-toggle
           aria-label="Switch to light mode" aria-pressed="false">☀</button>
-        <a href="__HOME_URL__">Home</a>
+        <a href="__DASHBOARD_URL__">Dashboard</a>
         <form action="__LOGOUT_URL__" method="post">__CSRF_INPUT__
           <button type="submit">Log out</button>
         </form>
+        <a class="header-cta" href="__FOUND_REPORT_URL__">Report an item</a>
       </nav>
     </div>
   </header>
   <main>
-    <p class="eyebrow">Account</p>
-    <h1>User dashboard</h1>
-    <p class="intro">View your account details and update your username.</p>
+    <div class="dashboard-heading">
+      <div>
+        <p class="eyebrow">Member dashboard</p>
+        <h1>Welcome back, __USERNAME__.</h1>
+        <p class="intro">Manage reports, monitor claims, and review smart matches.</p>
+      </div>
+      <a class="new-report" href="__FOUND_REPORT_URL__">＋ &nbsp; New report</a>
+    </div>
     __NOTICES__
-    <section class="dashboard-card" aria-labelledby="profile-heading">
+    <section class="dashboard-stats" aria-label="Account activity summary">
+      <article class="stat-card"><span class="stat-icon" aria-hidden="true">◈</span><strong>__REPORT_COUNT__</strong><span class="stat-label">Your reports</span></article>
+      <article class="stat-card"><span class="stat-icon" aria-hidden="true">✣</span><strong>0</strong><span class="stat-label">Smart matches</span></article>
+      <article class="stat-card"><span class="stat-icon" aria-hidden="true">◇</span><strong>0</strong><span class="stat-label">Claims tracked</span></article>
+    </section>
+    <section class="dashboard-card reported-items" aria-labelledby="reports-heading">
+      <p class="section-eyebrow">Item status tracking</p>
+      <div class="reports-heading-row">
+        <h2 id="reports-heading">Your reports</h2>
+        <a href="__FOUND_REPORT_URL__">Report another item</a>
+      </div>
+      <div class="report-list">__FOUND_ITEMS__</div>
+    </section>
+    <section class="dashboard-card account-details" aria-labelledby="profile-heading">
+      <p class="section-eyebrow">Account settings</p>
       <h2 id="profile-heading">Your information</h2>
       <dl class="profile-details">
         <div><dt>Username</dt><dd>__USERNAME__</dd></div>
@@ -1450,18 +1681,36 @@ USER_DASHBOARD_PAGE = """<!doctype html>
         <button class="submit-button" type="submit">Save username</button>
       </form>
     </section>
-    <section class="dashboard-card reported-items" aria-labelledby="reports-heading">
-      <div class="reports-heading-row">
-        <h2 id="reports-heading">Your found-item reports</h2>
-        <a href="__FOUND_REPORT_URL__">Report another item</a>
-      </div>
-      <div class="report-list">__FOUND_ITEMS__</div>
-    </section>
-    <section class="dashboard-card reported-items" aria-labelledby="requests-heading">
+    <section class="dashboard-card requests-section" aria-labelledby="requests-heading">
       <h2 id="requests-heading">Private information requests</h2>
       <div class="private-request-list">__INFORMATION_REQUESTS__</div>
     </section>
+    <section class="dashboard-feature" aria-labelledby="matching-heading">
+      <p class="section-eyebrow">AI-assisted matching</p>
+      <h2 id="matching-heading">Smart-match insights</h2>
+      <p>Matching features are not available yet. Your reports and private requests remain available above.</p>
+    </section>
   </main>
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <div class="footer-about">
+        <div class="footer-brand">⌕ &nbsp; FindIt</div>
+        <p>A campus-powered network that helps lost belongings make their way home safely.</p>
+      </div>
+      <div class="footer-column">
+        <h2>Take action</h2>
+        <a href="__LOST_REPORT_URL__">Report a lost item</a>
+        <a href="__FOUND_REPORT_URL__">Report a found item</a>
+        <a href="__HOME_URL__#recent-items">Search the catalog</a>
+      </div>
+      <div class="footer-column">
+        <h2>Account</h2>
+        <a href="__DASHBOARD_URL__">Your dashboard</a>
+        <a href="/admin/">Staff administration</a>
+      </div>
+    </div>
+    <div class="wrap copyright">© __YEAR__ FindIt. Built for safer campus returns.</div>
+  </footer>
   __THEME_SCRIPT__
 </body>
 </html>"""
@@ -1511,14 +1760,17 @@ def user_dashboard_page(request, form, found_items, inquiries):
     for placeholder, value in (
         ("__HOME_URL__", reverse("home")),
         ("__LOGOUT_URL__", reverse("logout")),
+        ("__FOUND_REPORT_URL__", reverse("found_report")),
+        ("__LOST_REPORT_URL__", reverse("signup")),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__USERNAME__", format_html("{}", username)),
         ("__EMAIL__", format_html("{}", email)),
         ("__JOINED__", str(joined)),
         ("__USERNAME_FIELD__", str(username_field)),
-        ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__FOUND_ITEMS__", str(reported_items)),
+        ("__REPORT_COUNT__", str(len(found_items))),
         ("__INFORMATION_REQUESTS__", str(information_requests)),
+        ("__YEAR__", str(date.today().year)),
         ("__NOTICES__", str(notices)),
         ("__THEME_SCRIPT__", _theme_script()),
     ):
