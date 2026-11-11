@@ -209,12 +209,15 @@ class AuthenticationTests(TestCase):
 		)
 		self.assertContains(response, f'href="{reverse("user_dashboard")}">Your dashboard</a>')
 
-	def test_homepage_shows_login_and_report_signup_links_when_logged_out(self):
+	def test_homepage_shows_login_and_report_item_links_when_logged_out(self):
 		response = self.client.get(reverse('home'))
 
 		self.assertContains(response, f'href="{reverse("login")}"')
 		self.assertContains(response, 'Log in')
-		self.assertContains(response, f'href="{reverse("signup")}"')
+		self.assertContains(
+			response,
+			f'href="{reverse("found_report")}">Report lost</a>',
+		)
 		self.assertContains(response, 'Report an item')
 		self.assertContains(response, f'href="{reverse("found_report")}">I found something</a>')
 		self.assertContains(
@@ -222,6 +225,23 @@ class AuthenticationTests(TestCase):
 			f'href="{reverse("login")}?next={reverse("user_dashboard")}">Open your dashboard',
 		)
 		self.assertContains(response, 'data-theme-toggle')
+
+	def test_report_lost_navigation_does_not_log_out_authenticated_users(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		home_response = self.client.get(reverse('home'))
+		self.assertContains(
+			home_response,
+			f'href="{reverse("found_report")}">Report lost</a>',
+		)
+
+		report_response = self.client.get(reverse('found_report'))
+		self.assertContains(report_response, 'Report a found item')
+		self.assertEqual(
+			self.client.session['_auth_user_id'],
+			str(user.pk),
+		)
 
 	def test_homepage_light_mode_action_buttons_have_contrast(self):
 		response = self.client.get(reverse('home'))
@@ -239,13 +259,14 @@ class AuthenticationTests(TestCase):
 		response = self.client.get(reverse('home'))
 
 		self.assertContains(response, 'body.theme-dark {')
+		self.assertContains(response, '--teal: #0b211f;')
 		self.assertContains(response, '--paper: #111918;')
-		self.assertContains(response, 'body.theme-dark .step { background: #192321; }')
-		self.assertContains(response, 'body.theme-dark .filters { background: #192321; color: #eef5f3; }')
-		self.assertContains(response, 'border-color: #465451; background-color: #111918; color: #eef5f3; color-scheme: dark;')
-		self.assertContains(response, 'body.theme-dark .report-card { border-color: #34423f; background: #192321; color: #eef5f3; }')
+		self.assertContains(response, 'body.theme-dark .step { border-color: #34423f; background: #111918; }')
+		self.assertContains(response, 'body.theme-dark .filters { background: #111918; color: #eef5f3; }')
+		self.assertContains(response, 'border-color: #34423f; background-color: #192321; color: #eef5f3; color-scheme: dark;')
+		self.assertContains(response, 'body.theme-dark .report-card { border-color: #34423f; background: #111918; color: #eef5f3; }')
 		self.assertContains(response, 'body.theme-dark .dashboard-card.secondary {')
-		self.assertContains(response, 'body.theme-dark .dashboard-card:not(.secondary) { background: #192321; }')
+		self.assertContains(response, 'body.theme-dark .dashboard-card:not(.secondary) { border: 1px solid #34423f; background: #111918; }')
 
 	def test_homepage_dashboard_cards_match_in_light_mode(self):
 		response = self.client.get(reverse('home'))
@@ -265,7 +286,7 @@ class AuthenticationTests(TestCase):
 	def test_match_card_matches_dashboard_surfaces_in_both_themes(self):
 		response = self.client.get(reverse('home'))
 
-		self.assertContains(response, 'background: #192321; color: #eef5f3;')
+		self.assertContains(response, 'background: #111918; color: #eef5f3;')
 		self.assertContains(
 			response,
 			'body.theme-light .match-card {\n      border-color: #cfe7e1; background: #eaf7f4; color: #163d38;',
@@ -276,10 +297,57 @@ class AuthenticationTests(TestCase):
 	def test_account_dark_mode_surfaces_are_dark(self):
 		response = self.client.get(reverse('login'))
 
+		self.assertContains(response, 'background: #0b211f; --teal: #0b211f;')
 		self.assertContains(response, 'body.theme-dark .auth-panel {')
 		self.assertContains(response, 'body.theme-dark .form-panel { background: #111918; }')
 		self.assertContains(response, 'body.theme-dark .auth-tabs { background: #202b29; }')
 		self.assertContains(response, 'body.theme-dark .auth-input {')
+
+	def test_browse_and_item_detail_dark_surfaces_match(self):
+		browse_response = self.client.get(reverse('browse_items'))
+
+		self.assertContains(browse_response, '--paper: #111918;')
+		self.assertContains(
+			browse_response,
+			'body.theme-dark .filters { border-color: #34423f; background: #111918; color: #eef5f3; }',
+		)
+		self.assertContains(
+			browse_response,
+			'body.theme-dark .filters select { border-color: #34423f; background-color: #192321; color: #eef5f3; color-scheme: dark; }',
+		)
+
+		detail_response = self.client.get(
+			reverse('found_item_detail', args=('sample-0',)),
+		)
+
+		self.assertContains(detail_response, '--paper: #0b211f;')
+		self.assertContains(
+			detail_response,
+			'body.theme-dark .item-facts { background: #111918; }',
+		)
+		self.assertContains(
+			detail_response,
+			'body.theme-dark .inquiry-input { border-color: #34423f; background: #192321; color: #eef5f3; color-scheme: dark; }',
+		)
+
+	def test_dashboard_dark_boxes_use_the_shared_surface_color(self):
+		self.client.force_login(self.create_user())
+
+		response = self.client.get(reverse('user_dashboard'))
+
+		self.assertContains(response, '--card: #111918;')
+		self.assertContains(
+			response,
+			'body.theme-dark .stat-card { border-color: #34423f; background: #111918; color: #eef5f3; }',
+		)
+		self.assertContains(
+			response,
+			'body.theme-dark .owned-report,',
+		)
+		self.assertContains(
+			response,
+			'body.theme-dark .dashboard-feature { border: 1px solid #34423f; background: #111918; color: #eef5f3; }',
+		)
 
 
 class FoundItemReportTests(TestCase):
@@ -320,6 +388,21 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'class="report-layout"')
 		self.assertContains(response, 'The right details create better matches.')
 		self.assertContains(response, 'class="primary-nav"')
+		self.assertContains(response, '--teal: #0b211f;')
+		self.assertContains(response, 'body.theme-dark .report-card { border-color: #34423f; }')
+		self.assertContains(
+			response,
+			'body.theme-dark .report-input { border-color: #34423f; background: #192321; color: #eef5f3; color-scheme: dark; }',
+		)
+		self.assertContains(
+			response,
+			f'href="{reverse("found_report")}">Report found</a>',
+		)
+		self.assertContains(
+			response,
+			f'href="{reverse("found_report")}">Report an item</a>',
+		)
+		self.assertNotContains(response, '__FOUND_REPORT_URL__')
 		self.assertContains(response, '<select name="location"', html=False)
 		self.assertContains(response, 'name="date_found"')
 		self.assertContains(response, 'type="date"')
@@ -426,7 +509,7 @@ class FoundItemReportTests(TestCase):
 
 		response = self.client.get(reverse('found_report'))
 		self.assertContains(response, 'Your found item was reported.')
-		response = self.client.get(reverse('home'))
+		response = self.client.get(reverse('browse_items'))
 		self.assertContains(response, 'Blue water bottle')
 		self.assertContains(response, 'Campus Center')
 		self.assertContains(response, '2:35 PM')
@@ -435,7 +518,7 @@ class FoundItemReportTests(TestCase):
 		user = self.create_user()
 		item = self.create_found_item(user, 'Silver watch')
 
-		response = self.client.get(reverse('home'))
+		response = self.client.get(reverse('browse_items'))
 
 		self.assertContains(
 			response,
@@ -445,7 +528,7 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'View details')
 
 	def test_every_catalog_item_has_a_public_details_page(self):
-		response = self.client.get(reverse('home'))
+		response = self.client.get(reverse('browse_items'))
 
 		for index, report in enumerate(REPORTS):
 			with self.subTest(item=report['title']):
@@ -468,6 +551,35 @@ class FoundItemReportTests(TestCase):
 					detail_response,
 					'This sample listing has no reporter account.',
 				)
+
+	def test_homepage_limits_reports_and_browse_page_shows_the_full_catalog(self):
+		user = self.create_user()
+		for index in range(8):
+			self.create_found_item(user, f'Campus item {index}')
+
+		home_response = self.client.get(reverse('home'))
+		self.assertContains(home_response, 'Showing 6 of 14 active reports')
+		self.assertEqual(
+			home_response.content.decode().count('class="report-card">'),
+			6,
+		)
+
+		browse_response = self.client.get(reverse('browse_items'))
+		self.assertContains(browse_response, 'Find what went missing.')
+		self.assertContains(browse_response, '14 active reports')
+		self.assertContains(browse_response, 'aria-current="page">Browse items</a>')
+		self.assertEqual(
+			browse_response.content.decode().count('class="report-card">'),
+			14,
+		)
+
+		filtered_response = self.client.get(
+			reverse('browse_items'),
+			{'category': 'Keys'},
+		)
+		self.assertContains(filtered_response, '1 active reports')
+		self.assertContains(filtered_response, 'Brass key ring with three keys')
+		self.assertNotContains(filtered_response, 'Campus item 0')
 
 	def test_invalid_item_detail_identifiers_return_not_found(self):
 		self.assertEqual(

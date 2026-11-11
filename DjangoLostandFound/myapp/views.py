@@ -9,6 +9,7 @@ from .forms import DashboardUsernameForm, FoundItemForm, FoundItemInquiryForm, S
 from .models import FoundItem, FoundItemInquiry
 from .pages import (
     REPORTS,
+    browse_items_page,
     found_item_page,
     found_item_detail_page,
     home_page,
@@ -20,6 +21,10 @@ from .pages import (
 
 def home(request):
     return HttpResponse(home_page(request))
+
+
+def browse_items(request):
+    return HttpResponse(browse_items_page(request))
 
 
 class PythonLoginView(LoginView):
