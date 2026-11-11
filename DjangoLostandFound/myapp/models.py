@@ -53,3 +53,21 @@ class FoundItem(models.Model):
 
     def __str__(self):
         return self.item_name
+
+
+class FoundItemInquiry(models.Model):
+    item = models.ForeignKey(
+        FoundItem,
+        on_delete=models.CASCADE,
+        related_name="inquiries",
+    )
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="found_item_inquiries",
+    )
+    message = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Information request for {self.item}"

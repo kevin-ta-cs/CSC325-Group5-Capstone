@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 
-from .models import FoundItem
+from .models import FoundItem, FoundItemInquiry
 
 
 class SignUpForm(UserCreationForm):
@@ -32,4 +32,13 @@ class FoundItemForm(forms.ModelForm):
         widgets = {
             'date_found': forms.DateInput(attrs={'type': 'date'}),
             'time_found': forms.TimeInput(attrs={'type': 'time'}),
+        }
+
+
+class FoundItemInquiryForm(forms.ModelForm):
+    class Meta:
+        model = FoundItemInquiry
+        fields = ('message',)
+        widgets = {
+            'message': forms.Textarea(attrs={'rows': 5, 'maxlength': 1000}),
         }

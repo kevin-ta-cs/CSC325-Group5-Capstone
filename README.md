@@ -64,7 +64,13 @@ not use separate HTML template files.
 Signed-in members can submit found-item reports with a required category,
 campus building, date found, and time found. Buildings are selected from the
 existing campus building list. Submitted reports are saved and displayed in
-the campus catalog; the category choices match the catalog filters.
+the campus catalog; the category choices match the catalog filters. Members can
+edit or delete their own found-item reports from the user dashboard.
+Selecting any catalog item opens a detail page with its category, description,
+building, date, and time. Signed-in users can send a private information
+request for saved found-item reports; requests appear only in the reporter's
+dashboard. Static sample listings are viewable but do not have a reporter to
+receive requests.
 
 # Running the Project
 

@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from django.contrib.messages import get_messages
@@ -330,6 +331,7 @@ HOME_PAGE = """<!doctype html>
     .report-summary strong { font-size: .95rem; }
     .report-summary span { color: var(--section-muted); font-size: .86rem; }
     .report-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+    .report-card-link { display: block; min-width: 0; color: inherit; text-decoration: none; }
     .report-card {
       overflow: hidden; border: 1px solid rgba(255,255,255,.16); border-radius: 18px;
       background: #fff; color: #1b2221; box-shadow: 0 8px 24px rgba(0,0,0,.1);
@@ -349,6 +351,12 @@ HOME_PAGE = """<!doctype html>
     .report-content h3 { margin-bottom: 8px; font-size: 1.06rem; line-height: 1.3; }
     .report-description { min-height: 54px; margin-bottom: 14px; color: #626c69; font-size: .85rem; }
     .report-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; color: #626c69; font-size: .77rem; }
+    .report-details-link {
+      display: flex; justify-content: space-between; margin-top: 20px; padding: 14px 16px;
+      border-radius: 14px; background: #f3f4f3; color: #1b2221; font-weight: 750;
+    }
+    .report-card-link:hover .report-details-link { background: #e8f8f4; color: #087c70; }
+    .report-card-link:focus-visible { outline: 3px solid #43b9a7; outline-offset: 4px; border-radius: 18px; }
     .browse-link { display: flex; width: fit-content; margin: 28px auto 0; color: var(--white); font-weight: 750; text-decoration: none; }
     .dashboard-section .section-inner { padding-block: 72px; }
     .dashboard-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
@@ -394,6 +402,8 @@ HOME_PAGE = """<!doctype html>
     body.theme-dark .report-category { color: #8ce8d8; }
     body.theme-dark .report-description,
     body.theme-dark .report-meta { color: #b3c0bd; }
+    body.theme-dark .report-details-link { background: #111918; color: #eef5f3; }
+    body.theme-dark .report-card-link:hover .report-details-link { background: #263a36; color: #8ce8d8; }
     body.theme-dark .dashboard-card.secondary {
       border-color: #34423f; background: #192321; color: #eef5f3;
     }
@@ -590,11 +600,15 @@ def _report_card(report):
         if report.get("time")
         else ""
     )
-    return format_html(
+    details_link = format_html(
+        '<span class="report-details-link">{}</span>',
+        "View details →",
+    )
+    card = format_html(
         '<article class="report-card"><div class="report-image">{}'
         '<span class="{}">{}</span></div><div class="report-content">'
         '<p class="report-category">{}</p><h3>{}</h3><p class="report-description">{}</p>'
-        '<div class="report-meta"><span>⌖ &nbsp;{}</span>{}<time datetime="{}">{}</time></div>'
+        '<div class="report-meta"><span>⌖ &nbsp;{}</span>{}<time datetime="{}">{}</time></div>{}'
         '</div></article>',
         image,
         badge_class,
@@ -606,6 +620,13 @@ def _report_card(report):
         found_time,
         report["date"],
         date.fromisoformat(report["date"]).strftime("%m/%d/%Y"),
+        details_link,
+    )
+    return format_html(
+        '<a class="report-card-link" href="{}" aria-label="View details for {}">{}</a>',
+        reverse("found_item_detail", args=(report["item_id"],)),
+        report["title"],
+        card,
     )
 
 
@@ -658,10 +679,14 @@ def home_page(request):
     selected_category = request.GET.get("category", "")
     selected_building = request.GET.get("building", "")
     search = request.GET.get("q", "").strip()[:100].casefold()
-    reports = list(REPORTS)
+    reports = [
+        {**report, "item_id": f"sample-{index}"}
+        for index, report in enumerate(REPORTS)
+    ]
     reports.extend(
         {
             "type": "found",
+            "item_id": str(item.pk),
             "category": item.category,
             "title": item.item_name,
             "description": item.description,
@@ -741,13 +766,276 @@ def home_page(request):
     return page
 
 
+FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#014d48">
+  <title>__ITEM_TITLE__ | FindIt</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --paper: #174b47;
+      --card: #fff;
+      --ink: #171d1c;
+      --muted: #66716e;
+      --line: #e1e7e5;
+      --accent: #087c70;
+      --button: #064d47;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh; margin: 0; background: var(--paper); color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+    body.theme-light { color-scheme: light; --paper: #f3f8f6; --card: #fff; --ink: #163d38; --muted: #596b67; --line: #dce8e5; }
+    a { color: var(--accent); }
+    button, textarea { font: inherit; }
+    .site-header { background: #090a0b; color: #fff; }
+    .header-inner {
+      display: flex; width: min(1440px, calc(100% - 48px)); min-height: 68px;
+      align-items: center; justify-content: space-between; gap: 24px; margin-inline: auto;
+    }
+    .brand { color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .header-actions { display: flex; align-items: center; gap: 20px; }
+    .header-actions a { color: #fff; font-weight: 650; text-decoration: none; }
+    .theme-toggle { padding: 0; border: 0; background: transparent; color: #fff; font-size: 1.2rem; cursor: pointer; }
+    main { width: min(1440px, calc(100% - 48px)); margin: 30px auto 80px; }
+    .back-link { display: inline-flex; margin-bottom: 20px; color: #fff; font-weight: 700; text-decoration: none; }
+    body.theme-light .back-link { color: var(--accent); }
+    .detail-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr); align-items: start; gap: 28px; }
+    .item-detail-card, .request-panel {
+      overflow: hidden; border-radius: 24px; background: var(--card); box-shadow: 0 18px 45px rgba(0,0,0,.12);
+    }
+    .item-image {
+      position: relative; display: grid; min-height: 360px; place-items: center;
+      background: linear-gradient(135deg, #dce5e2, #f3f5f4); color: #48716b;
+    }
+    .item-image img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .image-placeholder { font-size: clamp(5rem, 14vw, 11rem); font-weight: 800; opacity: .35; }
+    .item-badge {
+      position: absolute; z-index: 1; top: 20px; left: 22px; padding: 7px 18px;
+      border-radius: 999px; background: #72e1d0; color: #064943; font-weight: 800;
+    }
+    .item-content { padding: clamp(24px, 4vw, 48px); }
+    .item-category { margin: 0 0 8px; color: var(--accent); font-size: .84rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2rem, 4.5vw, 3.2rem); letter-spacing: -.04em; line-height: 1.16; }
+    .item-description { margin: 16px 0 28px; color: var(--muted); font-size: 1.1rem; white-space: pre-line; }
+    .item-facts {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
+      margin: 0; padding: 20px; border-radius: 16px; background: #f5f6f5;
+    }
+    body.theme-light .item-facts { background: #f3f8f6; }
+    .item-facts div { min-width: 0; }
+    .item-facts dt { color: var(--muted); font-size: .78rem; font-weight: 750; }
+    .item-facts dd { margin: 2px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+    .request-panel { padding: clamp(24px, 4vw, 48px); }
+    .request-icon {
+      display: grid; width: 58px; height: 58px; margin-bottom: 18px; place-items: center;
+      border-radius: 18px; background: #effbf8; color: #064d47; font-size: 1.5rem; font-weight: 800;
+    }
+    .request-panel h2 { margin: 0; font-size: clamp(1.6rem, 3vw, 2.2rem); letter-spacing: -.03em; line-height: 1.2; }
+    .request-intro { margin: 12px 0 26px; color: var(--muted); font-size: 1rem; }
+    .notice { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #f5faf8; }
+    .inquiry-form label { display: block; margin-bottom: 8px; font-weight: 750; }
+    .inquiry-input {
+      display: block; width: 100%; min-height: 150px; padding: 14px 16px; resize: vertical;
+      border: 1px solid #d5ddda; border-radius: 16px; background: #fff; color: #17201e;
+    }
+    .inquiry-input:focus { outline: 3px solid #72e1d0; outline-offset: 2px; }
+    .field-errors { margin: 6px 0 0; padding-left: 20px; color: #b42318; font-size: .86rem; }
+    .submit-request, .login-request {
+      display: block; width: 100%; min-height: 58px; margin-top: 22px; padding: 13px 18px;
+      border: 0; border-radius: 14px; background: var(--button); color: #fff;
+      font-weight: 800; text-align: center; text-decoration: none; cursor: pointer;
+    }
+    .request-private-note, .request-blocked { margin: 14px 0 0; color: var(--muted); font-size: .85rem; }
+    @media (max-width: 900px) {
+      .detail-grid { grid-template-columns: 1fr; }
+      .item-image { min-height: 300px; }
+    }
+    @media (max-width: 560px) {
+      .header-inner { flex-wrap: wrap; padding-block: 12px; }
+      .header-actions { flex-wrap: wrap; gap: 12px; }
+      main { width: min(100% - 28px, 620px); margin-top: 22px; }
+      .detail-grid { gap: 18px; }
+      .item-image { min-height: 230px; }
+      .item-facts { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body class="theme-dark">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="__HOME_URL__" aria-label="FindIt home">FindIt</a>
+      <nav class="header-actions" aria-label="Primary navigation">
+        <button class="theme-toggle" type="button" data-theme-toggle
+          aria-label="Switch to light mode" aria-pressed="false">☀</button>
+        <a href="__HOME_URL__#recent-items">Browse items</a>
+        <a href="__DASHBOARD_URL__">Dashboard</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <a class="back-link" href="__HOME_URL__#recent-items">← &nbsp; Back to all items</a>
+    <div class="detail-grid">
+      <article class="item-detail-card">
+        <div class="item-image">
+          <span class="item-badge">__ITEM_TYPE__</span>
+          __ITEM_MEDIA__
+        </div>
+        <div class="item-content">
+          <p class="item-category">__CATEGORY__</p>
+          <h1>__ITEM_TITLE__</h1>
+          <p class="item-description">__ITEM_DESCRIPTION__</p>
+          <dl class="item-facts">
+            <div><dt>Building found</dt><dd>__ITEM_LOCATION__</dd></div>
+            <div><dt>Date found</dt><dd>__ITEM_DATE__</dd></div>
+            <div><dt>Time found</dt><dd>__ITEM_TIME__</dd></div>
+          </dl>
+        </div>
+      </article>
+      <aside class="request-panel" aria-labelledby="request-heading">
+        <div class="request-icon" aria-hidden="true">✓</div>
+        <h2 id="request-heading">Request information privately</h2>
+        <p class="request-intro">Your message will only be shared with the person who reported this item. Contact details stay private.</p>
+        __NOTICES__
+        __REQUEST_CONTENT__
+      </aside>
+    </div>
+  </main>
+  __THEME_SCRIPT__
+</body>
+</html>"""
+
+
+def found_item_detail_page(request, item, form, request_status):
+    notices = format_html_join(
+        "",
+        '<p class="notice" role="status">{}</p>',
+        ((message,) for message in get_messages(request)),
+    )
+    if request_status == "available":
+        message = form["message"]
+        field_errors = (
+            format_html(
+                '<ul id="message-errors" class="field-errors" role="alert">{}</ul>',
+                message.errors,
+            )
+            if message.errors
+            else ""
+        )
+        request_content = format_html(
+            '<form class="inquiry-form" action="{}" method="post">{}'
+            '<label for="{}">Your message</label>{}{}'
+            '<button class="submit-request" type="submit">Send private request</button>'
+            '<p class="request-private-note">Only the item reporter can read your request.</p></form>',
+            reverse("request_found_item_information", args=(item.pk,)),
+            csrf_input(request),
+            message.id_for_label,
+            message.as_widget(
+                attrs={
+                    "class": "inquiry-input",
+                    "placeholder": "Ask a question or describe what you would like to know.",
+                    "aria-invalid": "true" if message.errors else "false",
+                    **({"aria-describedby": "message-errors"} if message.errors else {}),
+                },
+            ),
+            field_errors,
+        )
+    elif request_status == "own":
+        request_content = format_html(
+            '<p class="request-blocked">{}</p>',
+            "You reported this item, so you cannot send a request to yourself.",
+        )
+    elif request_status == "login":
+        login_url = (
+            f'{reverse("login")}?next={reverse("found_item_detail", args=(item.pk,))}'
+        )
+        request_content = format_html(
+            '<p class="request-blocked">Log in to send a private request to the reporter.</p>'
+            '<a class="login-request" href="{}">Log in to request information</a>',
+            login_url,
+        )
+    else:
+        request_content = format_html(
+            '<p class="request-blocked">{}</p>',
+            "This sample listing has no reporter account. Private requests are "
+            "available on saved found-item reports.",
+        )
+    if isinstance(item, FoundItem):
+        item_details = {
+            "title": item.item_name,
+            "initial": item.item_name[:1].upper(),
+            "category": item.category,
+            "description": item.description or "No description was provided.",
+            "location": item.location,
+            "date": date_format(item.date_found, "m/d/Y"),
+            "time": item.time_found.strftime("%I:%M %p").lstrip("0"),
+            "type": "Found item",
+            "image": "",
+            "alt": "",
+        }
+    else:
+        item_details = {
+            "title": item["title"],
+            "initial": item["title"][:1].upper(),
+            "category": item["category"],
+            "description": item["description"] or "No description was provided.",
+            "location": item["building"],
+            "date": date.fromisoformat(item["date"]).strftime("%m/%d/%Y"),
+            "time": item.get("time", "Not provided"),
+            "type": f'{item["type"].title()} item',
+            "image": item["image"],
+            "alt": item["alt"],
+        }
+    item_media = (
+        format_html(
+            '<img src="{}" alt="{}">',
+            item_details["image"],
+            item_details["alt"],
+        )
+        if item_details["image"]
+        else format_html(
+            '<span class="image-placeholder" aria-hidden="true">{}</span>',
+            item_details["initial"],
+        )
+    )
+    replacements = {
+        "__HOME_URL__": reverse("home"),
+        "__DASHBOARD_URL__": (
+            reverse("user_dashboard")
+            if request.user.is_authenticated
+            else reverse("login")
+        ),
+        "__ITEM_MEDIA__": str(item_media),
+        "__ITEM_TYPE__": format_html("{}", item_details["type"]),
+        "__ITEM_TITLE__": format_html("{}", item_details["title"]),
+        "__CATEGORY__": format_html("{}", item_details["category"]),
+        "__ITEM_DESCRIPTION__": format_html("{}", item_details["description"]),
+        "__ITEM_LOCATION__": format_html("{}", item_details["location"]),
+        "__ITEM_DATE__": item_details["date"],
+        "__ITEM_TIME__": item_details["time"],
+        "__NOTICES__": str(notices),
+        "__REQUEST_CONTENT__": str(request_content),
+        "__THEME_SCRIPT__": _theme_script(),
+    }
+    return re.sub(
+        r"__[A-Z_]+__",
+        lambda match: str(replacements[match.group(0)]),
+        FOUND_ITEM_DETAIL_PAGE,
+    )
+
+
 FOUND_ITEM_PAGE = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#014d48">
-  <title>Report a found item | FindIt</title>
+  <title>__PAGE_TITLE__ | FindIt</title>
   <style>
     :root {
       color-scheme: dark;
@@ -820,14 +1108,15 @@ FOUND_ITEM_PAGE = """<!doctype html>
       <nav class="header-actions" aria-label="Page navigation">
         <button class="theme-toggle" type="button" data-theme-toggle
           aria-label="Switch to light mode" aria-pressed="false">☀</button>
+        <a href="__DASHBOARD_URL__">Dashboard</a>
         <a href="__HOME_URL__">Home</a>
       </nav>
     </div>
   </header>
   <main>
     <p class="eyebrow">Help return a belonging</p>
-    <h1>Report a found item</h1>
-    <p class="intro">Share where and when you found the item so its owner can recognize it.</p>
+    <h1>__PAGE_TITLE__</h1>
+    <p class="intro">__FORM_INTRO__</p>
     __NOTICES__
     <section class="report-card" aria-label="Found item details">
       <form class="report-form" method="post">
@@ -835,7 +1124,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
         __ERROR_SUMMARY__
         __FORM_FIELDS__
         <p class="form-footer">Your report will be listed with its category, location, and found date and time.</p>
-        <button class="submit-button" type="submit">Submit found item report</button>
+        <button class="submit-button" type="submit">__SUBMIT_LABEL__</button>
       </form>
     </section>
   </main>
@@ -875,7 +1164,7 @@ def _found_item_field(form, name, label, full_width=False):
     )
 
 
-def found_item_page(request, form):
+def found_item_page(request, form, editing=False):
     error_summary = (
         format_html(
             '<ul class="error-summary" role="alert">{}</ul>',
@@ -901,6 +1190,20 @@ def found_item_page(request, form):
     page = FOUND_ITEM_PAGE
     for placeholder, value in (
         ("__HOME_URL__", reverse("home")),
+        ("__DASHBOARD_URL__", reverse("user_dashboard")),
+        ("__PAGE_TITLE__", "Edit found item" if editing else "Report a found item"),
+        (
+            "__FORM_INTRO__",
+            (
+                "Update the item details below."
+                if editing
+                else "Share where and when you found the item so its owner can recognize it."
+            ),
+        ),
+        (
+            "__SUBMIT_LABEL__",
+            "Save changes" if editing else "Submit found item report",
+        ),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__ERROR_SUMMARY__", str(error_summary)),
         ("__FORM_FIELDS__", str(form_fields)),
@@ -909,6 +1212,71 @@ def found_item_page(request, form):
     ):
         page = page.replace(placeholder, value)
     return page
+
+
+def _reported_item_card(request, item):
+    description = (
+        format_html(
+            '<p class="owned-report-description">{}</p>',
+            item.description,
+        )
+        if item.description
+        else ""
+    )
+    return format_html(
+        '<article class="owned-report"><div class="owned-report-content">'
+        '<h3>{}</h3><p class="owned-report-meta">{} · {} · {} at {}</p>{}'
+        '</div><div class="report-actions"><a href="{}">Edit</a>'
+        '<form action="{}" method="post" '
+        'onsubmit="return confirm(\'Delete this found-item report?\')">{}'
+        '<button class="delete-button" type="submit">Delete</button></form></div></article>',
+        item.item_name,
+        item.category,
+        item.location,
+        date_format(item.date_found, "M j, Y"),
+        item.time_found.strftime("%I:%M %p").lstrip("0"),
+        description,
+        reverse("edit_found_item", args=(item.pk,)),
+        reverse("delete_found_item", args=(item.pk,)),
+        csrf_input(request),
+    )
+
+
+def _reported_items_markup(request, found_items):
+    if not found_items:
+        return format_html(
+            '<p class="empty-reports">You have not reported any found items yet. '
+            '<a href="{}">Report a found item</a>.</p>',
+            reverse("found_report"),
+        )
+    return format_html_join(
+        "",
+        "{}",
+        ((_reported_item_card(request, item),) for item in found_items),
+    )
+
+
+def _information_requests_markup(inquiries):
+    if not inquiries:
+        return format_html(
+            '<p class="empty-requests">{}</p>',
+            "No private information requests have arrived.",
+        )
+    return format_html_join(
+        "",
+        '<article class="private-request"><div class="private-request-heading">'
+        '<h3>{}</h3><time>{}</time></div>'
+        '<p class="private-request-sender">From {}</p><p class="private-request-message">{}</p></article>',
+        (
+            (
+                inquiry.item.item_name,
+                inquiry.created_at.strftime("%b %d, %Y at %I:%M %p"),
+                inquiry.requester.get_username(),
+                inquiry.message,
+            )
+            for inquiry in inquiries
+        ),
+    )
 
 
 USER_DASHBOARD_PAGE = """<!doctype html>
@@ -929,6 +1297,7 @@ USER_DASHBOARD_PAGE = """<!doctype html>
       --accent: #8ce8d8;
       --button: #66d8c6;
       --button-ink: #082f2b;
+      --danger: #ffaaa2;
     }
     * { box-sizing: border-box; }
     body {
@@ -949,6 +1318,7 @@ USER_DASHBOARD_PAGE = """<!doctype html>
       --accent: #087c70;
       --button: #003e3a;
       --button-ink: #fff;
+      --danger: #b42318;
     }
     a { color: var(--accent); }
     button, input { font: inherit; }
@@ -983,6 +1353,37 @@ USER_DASHBOARD_PAGE = """<!doctype html>
       background: var(--card);
     }
     .dashboard-card h2 { margin: 0 0 20px; font-size: 1.35rem; }
+    .reported-items { margin-top: 24px; }
+    .reports-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .reports-heading-row h2 { margin: 0; }
+    .reports-heading-row > a { font-weight: 700; }
+    .report-list { display: grid; gap: 14px; margin-top: 20px; }
+    .owned-report {
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+      padding: 16px; border: 1px solid var(--line); border-radius: 14px;
+    }
+    .owned-report-content { min-width: 0; }
+    .owned-report h3 { margin: 0 0 4px; font-size: 1.05rem; }
+    .owned-report-meta, .owned-report-description { margin: 0; color: var(--muted); font-size: .88rem; }
+    .owned-report-description { margin-top: 8px; }
+    .report-actions { display: flex; align-items: center; gap: 14px; }
+    .report-actions a { font-weight: 700; }
+    .report-actions form { margin: 0; }
+    .delete-button {
+      min-height: 40px; padding: 7px 14px; border: 1px solid var(--danger);
+      border-radius: 999px; background: transparent; color: var(--danger);
+      font-weight: 750; cursor: pointer;
+    }
+    .delete-button:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+    .empty-reports { margin: 18px 0 0; color: var(--muted); }
+    .private-request-list { display: grid; gap: 14px; }
+    .private-request { padding: 16px; border: 1px solid var(--line); border-radius: 14px; }
+    .private-request-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+    .private-request h3 { margin: 0; font-size: 1rem; }
+    .private-request time, .private-request-sender { color: var(--muted); font-size: .85rem; }
+    .private-request-sender { margin: 5px 0 10px; }
+    .private-request-message { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .empty-requests { margin: 0; color: var(--muted); }
     .profile-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0; }
     .profile-details div { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; }
     .profile-details dt { margin-bottom: 4px; color: var(--muted); font-size: .82rem; font-weight: 700; }
@@ -1011,6 +1412,9 @@ USER_DASHBOARD_PAGE = """<!doctype html>
       .header-actions { flex-wrap: wrap; gap: 12px; }
       main { margin-top: 32px; }
       .profile-details { grid-template-columns: 1fr; }
+      .owned-report { align-items: flex-start; flex-direction: column; }
+      .reports-heading-row { align-items: flex-start; flex-direction: column; }
+      .private-request-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
     }
   </style>
 </head>
@@ -1046,13 +1450,24 @@ USER_DASHBOARD_PAGE = """<!doctype html>
         <button class="submit-button" type="submit">Save username</button>
       </form>
     </section>
+    <section class="dashboard-card reported-items" aria-labelledby="reports-heading">
+      <div class="reports-heading-row">
+        <h2 id="reports-heading">Your found-item reports</h2>
+        <a href="__FOUND_REPORT_URL__">Report another item</a>
+      </div>
+      <div class="report-list">__FOUND_ITEMS__</div>
+    </section>
+    <section class="dashboard-card reported-items" aria-labelledby="requests-heading">
+      <h2 id="requests-heading">Private information requests</h2>
+      <div class="private-request-list">__INFORMATION_REQUESTS__</div>
+    </section>
   </main>
   __THEME_SCRIPT__
 </body>
 </html>"""
 
 
-def user_dashboard_page(request, form):
+def user_dashboard_page(request, form, found_items, inquiries):
     username = form.instance.get_username()
     email = form.instance.email or "Not provided"
     joined = date_format(form.instance.date_joined, "F j, Y")
@@ -1090,6 +1505,8 @@ def user_dashboard_page(request, form):
         '<p class="notice" role="status">{}</p>',
         ((message,) for message in get_messages(request)),
     )
+    reported_items = _reported_items_markup(request, found_items)
+    information_requests = _information_requests_markup(inquiries)
     page = USER_DASHBOARD_PAGE
     for placeholder, value in (
         ("__HOME_URL__", reverse("home")),
@@ -1099,6 +1516,9 @@ def user_dashboard_page(request, form):
         ("__EMAIL__", format_html("{}", email)),
         ("__JOINED__", str(joined)),
         ("__USERNAME_FIELD__", str(username_field)),
+        ("__FOUND_REPORT_URL__", reverse("found_report")),
+        ("__FOUND_ITEMS__", str(reported_items)),
+        ("__INFORMATION_REQUESTS__", str(information_requests)),
         ("__NOTICES__", str(notices)),
         ("__THEME_SCRIPT__", _theme_script()),
     ):

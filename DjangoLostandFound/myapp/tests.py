@@ -1,8 +1,11 @@
+from datetime import date, time
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import FoundItem
+from .models import FoundItem, FoundItemInquiry
+from .pages import REPORTS
 
 User = get_user_model()
 
@@ -283,6 +286,17 @@ class FoundItemReportTests(TestCase):
 			password=self.password,
 		)
 
+	def create_found_item(self, reporter, item_name):
+		return FoundItem.objects.create(
+			reporter=reporter,
+			item_name=item_name,
+			description='A reported campus item.',
+			category='Accessories',
+			location='Campus Center',
+			date_found=date(2026, 11, 10),
+			time_found=time(14, 35),
+		)
+
 	def test_found_item_report_requires_login(self):
 		response = self.client.get(reverse('found_report'))
 
@@ -406,3 +420,268 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'Blue water bottle')
 		self.assertContains(response, 'Campus Center')
 		self.assertContains(response, '2:35 PM')
+
+	def test_catalog_found_report_opens_its_item_details(self):
+		user = self.create_user()
+		item = self.create_found_item(user, 'Silver watch')
+
+		response = self.client.get(reverse('home'))
+
+		self.assertContains(
+			response,
+			f'href="{reverse("found_item_detail", args=(item.pk,))}"',
+			html=False,
+		)
+		self.assertContains(response, 'View details')
+
+	def test_every_catalog_item_has_a_public_details_page(self):
+		response = self.client.get(reverse('home'))
+
+		for index, report in enumerate(REPORTS):
+			with self.subTest(item=report['title']):
+				detail_url = reverse(
+					'found_item_detail',
+					args=(f'sample-{index}',),
+				)
+				self.assertContains(response, f'href="{detail_url}"', html=False)
+				detail_response = self.client.get(detail_url)
+				self.assertContains(detail_response, report['title'])
+				self.assertContains(
+					detail_response,
+					report['category'].replace('&', '&amp;'),
+				)
+				self.assertContains(detail_response, report['building'])
+				self.assertContains(detail_response, 'item-detail-card')
+				self.assertContains(
+					detail_response,
+					'This sample listing has no reporter account.',
+				)
+
+	def test_invalid_item_detail_identifiers_return_not_found(self):
+		self.assertEqual(
+			self.client.get(reverse('found_item_detail', args=('not-an-id',))).status_code,
+			404,
+		)
+		self.assertEqual(
+			self.client.get(reverse('found_item_detail', args=('sample-99',))).status_code,
+			404,
+		)
+
+	def test_found_item_detail_shows_information_and_private_request_prompt(self):
+		reporter = self.create_user()
+		requester = User.objects.create_user(
+			username='item-owner',
+			email='item-owner@example.com',
+			password=self.password,
+		)
+		item = self.create_found_item(reporter, 'Silver watch')
+		self.client.force_login(requester)
+
+		response = self.client.get(reverse('found_item_detail', args=(item.pk,)))
+
+		self.assertContains(response, 'Silver watch')
+		self.assertContains(response, 'A reported campus item.')
+		self.assertContains(response, 'Campus Center')
+		self.assertContains(response, 'Request information privately')
+		self.assertContains(response, 'name="message"')
+		self.assertContains(response, 'Send private request')
+		self.assertNotContains(response, reporter.email)
+
+		self.client.force_login(reporter)
+		reporter_response = self.client.get(reverse('found_item_detail', args=(item.pk,)))
+		self.assertContains(reporter_response, 'Silver watch')
+		self.assertContains(
+			reporter_response,
+			'You reported this item, so you cannot send a request to yourself.',
+		)
+
+	def test_private_information_request_is_saved_and_only_shown_to_reporter(self):
+		reporter = self.create_user()
+		requester = User.objects.create_user(
+			username='item-owner',
+			email='item-owner@example.com',
+			password=self.password,
+		)
+		item = self.create_found_item(reporter, 'Silver watch')
+		detail_url = reverse('found_item_detail', args=(item.pk,))
+		request_url = reverse('request_found_item_information', args=(item.pk,))
+		self.client.force_login(requester)
+
+		response = self.client.post(
+			request_url,
+			{'message': 'Could you tell me where you found this watch?'},
+		)
+
+		self.assertRedirects(
+			response,
+			detail_url,
+			fetch_redirect_response=False,
+		)
+		inquiry = FoundItemInquiry.objects.get()
+		self.assertEqual(inquiry.item, item)
+		self.assertEqual(inquiry.requester, requester)
+		self.assertEqual(inquiry.message, 'Could you tell me where you found this watch?')
+		self.assertContains(self.client.get(detail_url), 'Your private request was sent')
+
+		self.client.force_login(reporter)
+		reporter_dashboard = self.client.get(reverse('user_dashboard'))
+		self.assertContains(reporter_dashboard, 'Private information requests')
+		self.assertContains(reporter_dashboard, 'Silver watch')
+		self.assertContains(reporter_dashboard, requester.username)
+		self.assertContains(reporter_dashboard, inquiry.message)
+
+		self.client.force_login(requester)
+		requester_dashboard = self.client.get(reverse('user_dashboard'))
+		self.assertNotContains(requester_dashboard, inquiry.message)
+
+	def test_reporter_cannot_request_information_about_their_own_item(self):
+		reporter = self.create_user()
+		item = self.create_found_item(reporter, 'My own report')
+		self.client.force_login(reporter)
+
+		response = self.client.post(
+			reverse('request_found_item_information', args=(item.pk,)),
+			{'message': 'Tell me more.'},
+		)
+
+		self.assertRedirects(
+			response,
+			reverse('found_item_detail', args=(item.pk,)),
+			fetch_redirect_response=False,
+		)
+		self.assertFalse(FoundItemInquiry.objects.exists())
+
+	def test_private_request_requires_login_and_a_posted_message(self):
+		reporter = self.create_user()
+		item = self.create_found_item(reporter, 'Silver watch')
+		request_url = reverse('request_found_item_information', args=(item.pk,))
+
+		response = self.client.post(request_url, {'message': 'Tell me more.'})
+
+		self.assertRedirects(
+			response,
+			f'{reverse("login")}?next={request_url}',
+		)
+		self.client.force_login(User.objects.create_user(
+			username='item-owner',
+			email='item-owner@example.com',
+			password=self.password,
+		))
+		self.assertEqual(self.client.get(request_url).status_code, 405)
+		response = self.client.post(request_url, {'message': ''})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'id="message-errors"')
+		self.assertFalse(FoundItemInquiry.objects.exists())
+
+	def test_dashboard_lists_only_reports_owned_by_the_signed_in_user(self):
+		user = self.create_user()
+		other_user = User.objects.create_user(
+			username='another-reporter',
+			email='another-reporter@example.com',
+			password=self.password,
+		)
+		owned_item = self.create_found_item(user, 'My blue umbrella')
+		other_item = self.create_found_item(other_user, "Someone else's keys")
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('user_dashboard'))
+
+		self.assertContains(response, 'Your found-item reports')
+		self.assertContains(response, 'My blue umbrella')
+		self.assertNotContains(response, "Someone else's keys")
+		self.assertContains(
+			response,
+			f'href="{reverse("edit_found_item", args=(owned_item.pk,))}">Edit</a>',
+		)
+		self.assertContains(
+			response,
+			f'action="{reverse("delete_found_item", args=(owned_item.pk,))}"',
+			html=False,
+		)
+		self.assertNotContains(
+			response,
+			reverse('edit_found_item', args=(other_item.pk,)),
+			html=False,
+		)
+
+	def test_user_can_edit_their_own_found_item_report(self):
+		user = self.create_user()
+		item = self.create_found_item(user, 'Old item name')
+		self.client.force_login(user)
+		edit_url = reverse('edit_found_item', args=(item.pk,))
+
+		response = self.client.get(edit_url)
+
+		self.assertContains(response, 'Edit found item')
+		self.assertContains(response, 'value="Old item name"')
+		response = self.client.post(edit_url, {
+			'item_name': 'Updated item name',
+			'description': 'Updated description.',
+			'category': 'Keys',
+			'location': 'Greenley Library',
+			'date_found': '2026-11-11',
+			'time_found': '15:45',
+		})
+
+		self.assertRedirects(
+			response,
+			reverse('user_dashboard'),
+			fetch_redirect_response=False,
+		)
+		item.refresh_from_db()
+		self.assertEqual(item.reporter, user)
+		self.assertEqual(item.item_name, 'Updated item name')
+		self.assertEqual(item.description, 'Updated description.')
+		self.assertEqual(item.category, 'Keys')
+		self.assertEqual(item.location, 'Greenley Library')
+
+	def test_users_cannot_edit_or_delete_another_users_report(self):
+		user = self.create_user()
+		other_user = User.objects.create_user(
+			username='another-reporter',
+			email='another-reporter@example.com',
+			password=self.password,
+		)
+		other_item = self.create_found_item(other_user, 'Private report')
+		self.client.force_login(user)
+
+		edit_response = self.client.post(
+			reverse('edit_found_item', args=(other_item.pk,)),
+			{
+				'item_name': 'Changed by another user',
+				'category': 'Keys',
+				'location': 'Greenley Library',
+				'date_found': '2026-11-11',
+				'time_found': '15:45',
+			},
+		)
+		delete_response = self.client.post(
+			reverse('delete_found_item', args=(other_item.pk,)),
+		)
+
+		self.assertEqual(edit_response.status_code, 404)
+		self.assertEqual(delete_response.status_code, 404)
+		other_item.refresh_from_db()
+		self.assertEqual(other_item.reporter, other_user)
+		self.assertEqual(other_item.item_name, 'Private report')
+
+	def test_user_can_delete_only_with_post(self):
+		user = self.create_user()
+		item = self.create_found_item(user, 'Report to delete')
+		self.client.force_login(user)
+		delete_url = reverse('delete_found_item', args=(item.pk,))
+
+		get_response = self.client.get(delete_url)
+
+		self.assertEqual(get_response.status_code, 405)
+		self.assertTrue(FoundItem.objects.filter(pk=item.pk).exists())
+		response = self.client.post(delete_url)
+
+		self.assertRedirects(
+			response,
+			reverse('user_dashboard'),
+			fetch_redirect_response=False,
+		)
+		self.assertFalse(FoundItem.objects.filter(pk=item.pk).exists())
+		self.assertContains(self.client.get(reverse('user_dashboard')), 'Your found item report was deleted.')
