@@ -61,6 +61,11 @@ Examples:
 The Django views generate the browser pages from Python source. The project does
 not use separate HTML template files.
 
+Signed-in members can submit found-item reports with a required category,
+campus building, date found, and time found. Buildings are selected from the
+existing campus building list. Submitted reports are saved and displayed in
+the campus catalog; the category choices match the catalog filters.
+
 # Running the Project
 
 ## Prerequisites

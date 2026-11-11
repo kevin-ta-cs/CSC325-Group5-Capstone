@@ -1,8 +1,12 @@
 from datetime import date
 
+from django.contrib.messages import get_messages
 from django.middleware.csrf import get_token
 from django.urls import reverse
+from django.utils.formats import date_format
 from django.utils.html import format_html, format_html_join
+
+from .models import BUILDING_CHOICES, FoundItem, ITEM_CATEGORY_CHOICES
 
 
 REPORTS = (
@@ -11,7 +15,7 @@ REPORTS = (
         "category": "Electronics",
         "title": "Black Sony noise-canceling headphones",
         "description": "Black over-ear Sony headphones in a hard zip case. Found after the evening study period.",
-        "building": "Main Library",
+        "building": "Greenley Library",
         "date": "2026-10-20",
         "image": "https://disc-fire-90145878.figma.site/api/media/file/black-headphones-original.jpg?w=960",
         "alt": "Black over-ear headphones",
@@ -21,7 +25,7 @@ REPORTS = (
         "category": "Electronics",
         "title": "Sony headphones in black hard case",
         "description": "Lost black Sony wireless headphones with a zippered hard case while studying in the library.",
-        "building": "Main Library",
+        "building": "Greenley Library",
         "date": "2026-10-20",
         "image": "",
         "alt": "",
@@ -31,7 +35,7 @@ REPORTS = (
         "category": "Bags & Luggage",
         "title": "Navy backpack with laptop sleeve",
         "description": "Navy commuter backpack with a padded laptop sleeve and a silver water bottle in the side pocket.",
-        "building": "Science & Engineering Hall",
+        "building": "Lupton Hall",
         "date": "2026-10-19",
         "image": "https://disc-fire-90145878.figma.site/api/media/file/campus-backpack-original.jpg?w=960",
         "alt": "Backpack and study essentials",
@@ -41,7 +45,7 @@ REPORTS = (
         "category": "Accessories",
         "title": "Brown leather card wallet",
         "description": "Slim brown leather wallet with several campus cards inside. No cash details are shown publicly.",
-        "building": "Student Union",
+        "building": "Campus Center",
         "date": "2026-10-18",
         "image": "https://disc-fire-90145878.figma.site/api/media/file/leather-wallet-original.jpg?w=960",
         "alt": "Brown leather wallet",
@@ -51,7 +55,7 @@ REPORTS = (
         "category": "Accessories",
         "title": "Silver analog wristwatch",
         "description": "Silver metal-band analog watch found beside the indoor courts after recreation hours.",
-        "building": "Recreation Center",
+        "building": "Nold Athletic Complex",
         "date": "2026-10-17",
         "image": "https://disc-fire-90145878.figma.site/api/media/file/silver-watch-original.jpg?w=960",
         "alt": "Silver wristwatch",
@@ -61,7 +65,7 @@ REPORTS = (
         "category": "Keys",
         "title": "Brass key ring with three keys",
         "description": "Three brass-colored keys on a small round key ring found after a rehearsal.",
-        "building": "Arts Center",
+        "building": "Memorial Hall",
         "date": "2026-10-16",
         "image": "https://disc-fire-90145878.figma.site/api/media/file/key-ring-original.jpg?w=960",
         "alt": "Vintage keys and key ring",
@@ -154,6 +158,32 @@ HOME_PAGE = """<!doctype html>
     .primary-nav a:hover, .header-actions a:hover { color: var(--teal-bright); }
     .header-actions form { margin: 0; }
     .header-actions form button { padding: 0; border: 0; background: none; color: #f7f7f7; font-weight: 650; cursor: pointer; }
+    .account-menu { position: relative; }
+    .account-menu summary {
+      padding: 6px 9px; border-radius: 8px; color: #f7f7f7;
+      font-size: .9rem; font-weight: 600; cursor: pointer; list-style: none;
+    }
+    .account-menu summary:hover, .account-menu summary:focus-visible {
+      background: rgba(140,232,216,.14); color: #8ce8d8;
+    }
+    .account-menu summary:focus-visible { outline: 2px solid #8ce8d8; outline-offset: 2px; }
+    .account-menu summary:hover .account-username,
+    .account-menu summary:focus-visible .account-username { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+    .account-menu summary::-webkit-details-marker { display: none; }
+    .account-menu summary::after {
+      display: inline-block; width: 7px; height: 7px; margin: 0 0 3px 7px;
+      transform: rotate(45deg); border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor; content: "";
+    }
+    .account-menu-panel {
+      position: absolute; z-index: 20; top: 100%; right: 0; display: none;
+      min-width: 180px; gap: 12px; padding: 14px; border: 1px solid #34423f;
+      border-radius: 12px; background: #090a0b; box-shadow: 0 12px 28px rgba(0,0,0,.25);
+    }
+    .account-menu:hover .account-menu-panel,
+    .account-menu:focus-within .account-menu-panel,
+    .account-menu[open] .account-menu-panel { display: grid; }
+    .account-menu-panel form button { font: inherit; text-align: left; }
     .theme-link { border: 0; background: transparent; color: #fff !important; font-size: 1.2rem !important; cursor: pointer; }
     .header-actions .header-cta {
       padding: 9px 18px; border-radius: 999px; background: #fff; color: var(--action-green); font-weight: 750;
@@ -425,13 +455,13 @@ HOME_PAGE = """<!doctype html>
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="#how-it-works">How it works</a>
         <a href="#report-actions">Report lost</a>
-        <a href="#report-actions">Report found</a>
+        <a href="__FOUND_REPORT_URL__">Report found</a>
         <a href="#recent-items">Browse items</a>
       </nav>
       <div class="header-actions">
         <button class="theme-link" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false">☀</button>
         __ACCOUNT_LINK__
-        <button class="header-cta" type="button">Report an item</button>
+        <a class="header-cta" href="__FOUND_REPORT_URL__">Report an item</a>
       </div>
     </div>
   </header>
@@ -444,7 +474,7 @@ HOME_PAGE = """<!doctype html>
           <p class="hero-description">Report lost or found belongings, discover smart matches, and verify ownership without exposing private contact details.</p>
           <div class="hero-actions">
             <a class="pill-button" href="__REPORT_URL__">Report a lost item <span aria-hidden="true">→</span></a>
-            <a class="pill-button outline" href="__REPORT_URL__">I found something</a>
+            <a class="pill-button outline" href="__FOUND_REPORT_URL__">I found something</a>
           </div>
           <ul class="trust-list">
             <li>Free to use</li>
@@ -510,7 +540,7 @@ HOME_PAGE = """<!doctype html>
             <p class="eyebrow">For students and staff</p>
             <h2>One dashboard for every report.</h2>
             <p>Edit or delete reports, track status, monitor claims, and see new smart matches as the catalog grows.</p>
-            <button class="dashboard-action" type="button" disabled>Open your dashboard &nbsp;→</button>
+            <a class="dashboard-action" href="__DASHBOARD_URL__">Open your dashboard &nbsp;→</a>
           </article>
           <article class="dashboard-card secondary">
             <p class="eyebrow">For campus teams</p>
@@ -531,13 +561,13 @@ HOME_PAGE = """<!doctype html>
       <div class="footer-column">
         <h2>Take action</h2>
         <a href="__REPORT_URL__">Report a lost item</a>
-        <a href="__REPORT_URL__">Report a found item</a>
+        <a href="__FOUND_REPORT_URL__">Report a found item</a>
         <a href="#recent-items">Search the catalog</a>
       </div>
       <div class="footer-column">
         <h2>Account</h2>
         <a href="__ACCOUNT_URL__">Register or log in</a>
-        <a href="__ACCOUNT_URL__">Your dashboard</a>
+        <a href="__DASHBOARD_URL__">Your dashboard</a>
         <a href="/admin/">Staff administration</a>
       </div>
     </div>
@@ -555,11 +585,16 @@ def _report_card(report):
         else format_html('<span class="placeholder" aria-hidden="true">{}</span>', "E")
     )
     badge_class = "report-badge lost" if report["type"] == "lost" else "report-badge"
+    found_time = (
+        format_html("<span>◷ &nbsp;{}</span>", report["time"])
+        if report.get("time")
+        else ""
+    )
     return format_html(
         '<article class="report-card"><div class="report-image">{}'
         '<span class="{}">{}</span></div><div class="report-content">'
         '<p class="report-category">{}</p><h3>{}</h3><p class="report-description">{}</p>'
-        '<div class="report-meta"><span>⌖ &nbsp;{}</span><time datetime="{}">{}</time></div>'
+        '<div class="report-meta"><span>⌖ &nbsp;{}</span>{}<time datetime="{}">{}</time></div>'
         '</div></article>',
         image,
         badge_class,
@@ -568,6 +603,7 @@ def _report_card(report):
         report["title"],
         report["description"],
         report["building"],
+        found_time,
         report["date"],
         date.fromisoformat(report["date"]).strftime("%m/%d/%Y"),
     )
@@ -578,7 +614,6 @@ def _filter_form(request, theme):
     selected_category = request.GET.get("category", "")
     selected_building = request.GET.get("building", "")
     search = request.GET.get("q", "")[:100]
-
     def options(values, selected):
         return format_html_join(
             "",
@@ -606,11 +641,11 @@ def _filter_form(request, theme):
         search,
         options((("", "Report type"), ("lost", "Lost"), ("found", "Found")), selected_type),
         options(
-            (("", "Category"),) + tuple((value, value) for value in sorted({r["category"] for r in REPORTS})),
+            (("", "Category"),) + tuple(sorted(ITEM_CATEGORY_CHOICES)),
             selected_category,
         ),
         options(
-            (("", "Building"),) + tuple((value, value) for value in sorted({r["building"] for r in REPORTS})),
+            (("", "Building"),) + BUILDING_CHOICES,
             selected_building,
         ),
         options((("newest", "Newest"), ("oldest", "Oldest"), ("title", "Title")), request.GET.get("sort", "newest")),
@@ -623,8 +658,23 @@ def home_page(request):
     selected_category = request.GET.get("category", "")
     selected_building = request.GET.get("building", "")
     search = request.GET.get("q", "").strip()[:100].casefold()
+    reports = list(REPORTS)
+    reports.extend(
+        {
+            "type": "found",
+            "category": item.category,
+            "title": item.item_name,
+            "description": item.description,
+            "building": item.location,
+            "date": item.date_found.isoformat(),
+            "time": item.time_found.strftime("%I:%M %p").lstrip("0"),
+            "image": "",
+            "alt": "",
+        }
+        for item in FoundItem.objects.all()
+    )
     reports = [
-        report for report in REPORTS
+        report for report in reports
         if (not selected_type or report["type"] == selected_type)
         and (not selected_category or report["category"] == selected_category)
         and (not selected_building or report["building"] == selected_building)
@@ -652,12 +702,18 @@ def home_page(request):
         )
 
     account_url = reverse("login")
+    dashboard_url = reverse("user_dashboard")
+    dashboard_login_url = f"{account_url}?next={dashboard_url}"
     report_url = reverse("signup")
+    found_report_url = reverse("found_report")
     account_link = (
         format_html(
-            '<span>Welcome, {}!</span><form action="{}" method="post">{}'
-            '<button type="submit">Logout</button></form>',
+            '<details class="account-menu"><summary>Welcome, <span class="account-username">{}</span>!</summary>'
+            '<div class="account-menu-panel"><a href="{}">Your dashboard</a>'
+            '<form action="{}" method="post">{}'
+            '<button type="submit">Log out</button></form></div></details>',
             request.user.get_username(),
+            dashboard_url,
             reverse("logout"),
             csrf_input(request),
         )
@@ -670,11 +726,381 @@ def home_page(request):
         ("__THEME_SCRIPT__", _theme_script()),
         ("__ACCOUNT_LINK__", str(account_link)),
         ("__ACCOUNT_URL__", account_url),
+        (
+            "__DASHBOARD_URL__",
+            dashboard_url if request.user.is_authenticated else dashboard_login_url,
+        ),
         ("__REPORT_URL__", report_url),
+        ("__FOUND_REPORT_URL__", found_report_url),
         ("__FILTERS__", str(_filter_form(request, theme))),
         ("__REPORT_COUNT__", str(len(reports))),
         ("__REPORT_CARDS__", str(report_cards)),
         ("__YEAR__", str(date.today().year)),
+    ):
+        page = page.replace(placeholder, value)
+    return page
+
+
+FOUND_ITEM_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#014d48">
+  <title>Report a found item | FindIt</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --paper: #111918;
+      --card: #192321;
+      --ink: #eef5f3;
+      --muted: #b3c0bd;
+      --line: #34423f;
+      --accent: #8ce8d8;
+      --button: #66d8c6;
+      --button-ink: #082f2b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh; margin: 0; background: var(--paper); color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+    body.theme-light {
+      color-scheme: light; --paper: #f3f8f6; --card: #fff; --ink: #163d38;
+      --muted: #596b67; --line: #dce8e5; --accent: #087c70; --button: #003e3a; --button-ink: #fff;
+    }
+    a { color: var(--accent); }
+    button, input, select, textarea { font: inherit; }
+    .site-header { background: #090a0b; color: #fff; }
+    .header-inner {
+      display: flex; width: min(1120px, calc(100% - 40px)); min-height: 68px;
+      align-items: center; justify-content: space-between; gap: 20px; margin-inline: auto;
+    }
+    .brand { color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .header-actions { display: flex; align-items: center; gap: 18px; }
+    .header-actions a { color: #fff; font-weight: 650; text-decoration: none; }
+    .theme-toggle { padding: 0; border: 0; background: transparent; color: #fff; font-size: 1.2rem; cursor: pointer; }
+    main { width: min(760px, calc(100% - 40px)); margin: 48px auto 80px; }
+    .eyebrow { margin: 0 0 6px; color: var(--accent); font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.04em; line-height: 1.15; }
+    .intro { margin: 10px 0 26px; color: var(--muted); }
+    .report-card { padding: clamp(22px, 5vw, 36px); border: 1px solid var(--line); border-radius: 22px; background: var(--card); }
+    .report-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .form-field { min-width: 0; }
+    .form-field.full { grid-column: 1 / -1; }
+    .form-field label { display: block; margin-bottom: 7px; font-weight: 700; }
+    .report-input {
+      display: block; width: 100%; min-height: 48px; padding: 10px 12px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink);
+    }
+    textarea.report-input { min-height: 120px; resize: vertical; }
+    .report-input:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .field-errors { margin: 6px 0 0; padding-left: 20px; color: #ffaaa2; font-size: .86rem; }
+    .error-summary { grid-column: 1 / -1; margin: 0; color: #ffaaa2; }
+    .notice { margin-bottom: 18px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+    .submit-button {
+      grid-column: 1 / -1; min-height: 48px; padding: 12px 20px; border: 0; border-radius: 12px;
+      background: var(--button); color: var(--button-ink); font-weight: 800; cursor: pointer;
+    }
+    .form-footer { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .88rem; }
+    @media (max-width: 560px) {
+      .header-inner { flex-wrap: wrap; padding-block: 12px; }
+      .header-actions { flex-wrap: wrap; gap: 12px; }
+      main { margin-top: 32px; }
+      .report-form { grid-template-columns: 1fr; }
+      .form-field.full, .submit-button, .form-footer, .error-summary { grid-column: auto; }
+    }
+  </style>
+</head>
+<body class="theme-dark">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="__HOME_URL__" aria-label="FindIt home">FindIt</a>
+      <nav class="header-actions" aria-label="Page navigation">
+        <button class="theme-toggle" type="button" data-theme-toggle
+          aria-label="Switch to light mode" aria-pressed="false">☀</button>
+        <a href="__HOME_URL__">Home</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <p class="eyebrow">Help return a belonging</p>
+    <h1>Report a found item</h1>
+    <p class="intro">Share where and when you found the item so its owner can recognize it.</p>
+    __NOTICES__
+    <section class="report-card" aria-label="Found item details">
+      <form class="report-form" method="post">
+        __CSRF_INPUT__
+        __ERROR_SUMMARY__
+        __FORM_FIELDS__
+        <p class="form-footer">Your report will be listed with its category, location, and found date and time.</p>
+        <button class="submit-button" type="submit">Submit found item report</button>
+      </form>
+    </section>
+  </main>
+  __THEME_SCRIPT__
+</body>
+</html>"""
+
+
+def _found_item_field(form, name, label, full_width=False):
+    field = form[name]
+    field_errors = (
+        format_html(
+            '<ul id="{}-errors" class="field-errors" role="alert">{}</ul>',
+            field.html_name,
+            field.errors,
+        )
+        if field.errors
+        else ""
+    )
+    return format_html(
+        '<div class="form-field{}"><label for="{}">{}</label>{}{}</div>',
+        " full" if full_width else "",
+        field.id_for_label,
+        label,
+        field.as_widget(
+            attrs={
+                "class": "report-input",
+                "aria-invalid": "true" if field.errors else "false",
+                **(
+                    {"aria-describedby": f"{field.html_name}-errors"}
+                    if field.errors
+                    else {}
+                ),
+            }
+        ),
+        field_errors,
+    )
+
+
+def found_item_page(request, form):
+    error_summary = (
+        format_html(
+            '<ul class="error-summary" role="alert">{}</ul>',
+            form.non_field_errors(),
+        )
+        if form.non_field_errors()
+        else ""
+    )
+    form_fields = format_html(
+        "{}{}{}{}{}{}",
+        _found_item_field(form, "item_name", "Item name"),
+        _found_item_field(form, "category", "Category"),
+        _found_item_field(form, "location", "Building found"),
+        _found_item_field(form, "date_found", "Date found"),
+        _found_item_field(form, "time_found", "Time found"),
+        _found_item_field(form, "description", "Description (optional)", full_width=True),
+    )
+    notices = format_html_join(
+        "",
+        '<p class="notice" role="status">{}</p>',
+        ((message,) for message in get_messages(request)),
+    )
+    page = FOUND_ITEM_PAGE
+    for placeholder, value in (
+        ("__HOME_URL__", reverse("home")),
+        ("__CSRF_INPUT__", str(csrf_input(request))),
+        ("__ERROR_SUMMARY__", str(error_summary)),
+        ("__FORM_FIELDS__", str(form_fields)),
+        ("__NOTICES__", str(notices)),
+        ("__THEME_SCRIPT__", _theme_script()),
+    ):
+        page = page.replace(placeholder, value)
+    return page
+
+
+USER_DASHBOARD_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#014d48">
+  <title>User dashboard | FindIt</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --paper: #111918;
+      --card: #192321;
+      --ink: #eef5f3;
+      --muted: #b3c0bd;
+      --line: #34423f;
+      --accent: #8ce8d8;
+      --button: #66d8c6;
+      --button-ink: #082f2b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+    body.theme-light {
+      color-scheme: light;
+      --paper: #f3f8f6;
+      --card: #fff;
+      --ink: #163d38;
+      --muted: #596b67;
+      --line: #dce8e5;
+      --accent: #087c70;
+      --button: #003e3a;
+      --button-ink: #fff;
+    }
+    a { color: var(--accent); }
+    button, input { font: inherit; }
+    .site-header { background: #090a0b; color: #fff; }
+    .header-inner {
+      display: flex;
+      width: min(1120px, calc(100% - 40px));
+      min-height: 68px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-inline: auto;
+    }
+    .brand { color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .header-actions { display: flex; align-items: center; gap: 18px; }
+    .header-actions a { color: #fff; font-weight: 650; text-decoration: none; }
+    .header-actions a:hover { color: #8ce8d8; }
+    .header-actions form { margin: 0; }
+    .header-actions button, .theme-toggle {
+      padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer;
+    }
+    .theme-toggle { font-size: 1.2rem; }
+    main { width: min(900px, calc(100% - 40px)); margin: 52px auto 80px; }
+    .eyebrow { margin-bottom: 6px; color: var(--accent); font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.04em; line-height: 1.15; }
+    .intro { margin: 10px 0 28px; color: var(--muted); }
+    .notice { margin-bottom: 20px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+    .dashboard-card {
+      padding: clamp(22px, 5vw, 36px);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--card);
+    }
+    .dashboard-card h2 { margin: 0 0 20px; font-size: 1.35rem; }
+    .profile-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0; }
+    .profile-details div { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; }
+    .profile-details dt { margin-bottom: 4px; color: var(--muted); font-size: .82rem; font-weight: 700; }
+    .profile-details dd { overflow-wrap: anywhere; margin: 0; font-weight: 650; }
+    .username-form { max-width: 540px; margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--line); }
+    .username-form label { display: block; margin-bottom: 7px; font-weight: 700; }
+    .text-input {
+      width: 100%; min-height: 48px; padding: 10px 12px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink);
+    }
+    .text-input:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .field-help, .field-errors { margin: 6px 0 0; color: var(--muted); font-size: .85rem; }
+    .field-errors { color: #d74848; }
+    .field-errors ul { margin: 0; padding-left: 20px; }
+    .submit-button {
+      min-height: 46px; margin-top: 18px; padding: 10px 20px;
+      border: 0; border-radius: 999px; background: var(--button); color: var(--button-ink);
+      font-weight: 800; cursor: pointer;
+    }
+    .submit-button:focus-visible, .header-actions a:focus-visible,
+    .header-actions button:focus-visible, .brand:focus-visible {
+      outline: 3px solid #8ce8d8; outline-offset: 3px;
+    }
+    @media (max-width: 560px) {
+      .header-inner { flex-wrap: wrap; padding-block: 12px; }
+      .header-actions { flex-wrap: wrap; gap: 12px; }
+      main { margin-top: 32px; }
+      .profile-details { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body class="theme-dark">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="__HOME_URL__" aria-label="FindIt home">FindIt</a>
+      <nav class="header-actions" aria-label="Account navigation">
+        <button class="theme-toggle" type="button" data-theme-toggle
+          aria-label="Switch to light mode" aria-pressed="false">☀</button>
+        <a href="__HOME_URL__">Home</a>
+        <form action="__LOGOUT_URL__" method="post">__CSRF_INPUT__
+          <button type="submit">Log out</button>
+        </form>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <p class="eyebrow">Account</p>
+    <h1>User dashboard</h1>
+    <p class="intro">View your account details and update your username.</p>
+    __NOTICES__
+    <section class="dashboard-card" aria-labelledby="profile-heading">
+      <h2 id="profile-heading">Your information</h2>
+      <dl class="profile-details">
+        <div><dt>Username</dt><dd>__USERNAME__</dd></div>
+        <div><dt>Email</dt><dd>__EMAIL__</dd></div>
+        <div><dt>Member since</dt><dd>__JOINED__</dd></div>
+      </dl>
+      <form class="username-form" method="post">
+        __CSRF_INPUT__
+        <div class="form-field">__USERNAME_FIELD__</div>
+        <button class="submit-button" type="submit">Save username</button>
+      </form>
+    </section>
+  </main>
+  __THEME_SCRIPT__
+</body>
+</html>"""
+
+
+def user_dashboard_page(request, form):
+    username = form.instance.get_username()
+    email = form.instance.email or "Not provided"
+    joined = date_format(form.instance.date_joined, "F j, Y")
+    described_by = []
+    if form["username"].help_text:
+        described_by.append("username-help")
+    if form["username"].errors:
+        described_by.append("username-errors")
+    field_errors = (
+        format_html('<div id="username-errors" class="field-errors" role="alert">{}</div>', form["username"].errors)
+        if form["username"].errors
+        else ""
+    )
+    field_help = (
+        format_html('<p id="username-help" class="field-help">{}</p>', form["username"].help_text)
+        if form["username"].help_text
+        else ""
+    )
+    username_field = format_html(
+        '<label for="{}">New username</label>{}{}{}',
+        form["username"].id_for_label,
+        form["username"].as_widget(
+            attrs={
+                "class": "text-input",
+                "autocomplete": "username",
+                "aria-invalid": "true" if form["username"].errors else "false",
+                **({"aria-describedby": " ".join(described_by)} if described_by else {}),
+            },
+        ),
+        field_errors,
+        field_help,
+    )
+    notices = format_html_join(
+        "",
+        '<p class="notice" role="status">{}</p>',
+        ((message,) for message in get_messages(request)),
+    )
+    page = USER_DASHBOARD_PAGE
+    for placeholder, value in (
+        ("__HOME_URL__", reverse("home")),
+        ("__LOGOUT_URL__", reverse("logout")),
+        ("__CSRF_INPUT__", str(csrf_input(request))),
+        ("__USERNAME__", format_html("{}", username)),
+        ("__EMAIL__", format_html("{}", email)),
+        ("__JOINED__", str(joined)),
+        ("__USERNAME_FIELD__", str(username_field)),
+        ("__NOTICES__", str(notices)),
+        ("__THEME_SCRIPT__", _theme_script()),
     ):
         page = page.replace(placeholder, value)
     return page
@@ -771,6 +1197,7 @@ def signup_page(request, form):
         ("__HOME_URL__", reverse("home")),
         ("__LOGIN_URL__", reverse("login")),
         ("__SIGNUP_URL__", reverse("signup")),
+        ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__ADMIN_URL__", reverse("admin:index")),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__THEME_SCRIPT__", _theme_script()),
@@ -988,7 +1415,7 @@ LOGIN_PAGE = """<!doctype html>
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="__HOME_URL__#how-it-works">How it works</a>
         <a href="__SIGNUP_URL__">Report lost</a>
-        <a href="__SIGNUP_URL__">Report found</a>
+        <a href="__FOUND_REPORT_URL__">Report found</a>
         <a href="__HOME_URL__#recent-items">Browse items</a>
       </nav>
       <div class="header-actions">
@@ -1035,7 +1462,7 @@ LOGIN_PAGE = """<!doctype html>
       <div class="footer-column">
         <h2>Take action</h2>
         <a href="__SIGNUP_URL__">Report a lost item</a>
-        <a href="__SIGNUP_URL__">Report a found item</a>
+        <a href="__FOUND_REPORT_URL__">Report a found item</a>
         <a href="__HOME_URL__#recent-items">Search the catalog</a>
       </div>
       <div class="footer-column">
@@ -1076,6 +1503,7 @@ def login_page(request, form, next_url):
         ("__HOME_URL__", reverse("home")),
         ("__LOGIN_URL__", reverse("login")),
         ("__SIGNUP_URL__", reverse("signup")),
+        ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__ADMIN_URL__", reverse("admin:index")),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__THEME_SCRIPT__", _theme_script()),

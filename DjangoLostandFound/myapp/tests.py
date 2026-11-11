@@ -2,6 +2,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from .models import FoundItem
+
 User = get_user_model()
 
 
@@ -38,6 +40,7 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, 'Username')
 		self.assertContains(response, 'Campus email')
 		self.assertContains(response, 'Confirm password')
+		self.assertContains(response, f'href="{reverse("found_report")}">Report found</a>')
 		self.assertContains(response, 'name="csrfmiddlewaretoken"')
 		self.assertContains(response, 'aria-current="page">Create account</a>')
 		self.assertContains(response, 'data-theme-toggle')
@@ -100,6 +103,7 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, 'Access your dashboard')
 		self.assertContains(response, 'Campus username')
 		self.assertContains(response, 'Log in securely')
+		self.assertContains(response, f'href="{reverse("found_report")}">Report found</a>')
 		self.assertContains(response, 'name="csrfmiddlewaretoken"')
 		self.assertContains(response, 'data-theme-toggle')
 		self.assertContains(response, 'localStorage.setItem(storageKey, theme)')
@@ -119,26 +123,82 @@ class AuthenticationTests(TestCase):
 		self.assertRedirects(response, reverse('home'))
 		self.assertNotIn('_auth_user_id', self.client.session)
 
+	def test_dashboard_requires_login(self):
+		response = self.client.get(reverse('user_dashboard'))
+
+		self.assertRedirects(
+			response,
+			f'{reverse("login")}?next={reverse("user_dashboard")}',
+		)
+
+	def test_dashboard_shows_account_information_and_username_form(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('user_dashboard'))
+
+		self.assertContains(response, 'User dashboard')
+		self.assertContains(response, user.username)
+		self.assertContains(response, user.email)
+		self.assertContains(response, 'Member since')
+		self.assertContains(response, 'name="username"')
+		self.assertContains(response, 'name="csrfmiddlewaretoken"')
+
+	def test_dashboard_updates_the_authenticated_users_username(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		response = self.client.post(reverse('user_dashboard'), {'username': 'updated-user'})
+
+		self.assertEqual(response.status_code, 302)
+		self.assertRedirects(response, reverse('user_dashboard'), fetch_redirect_response=False)
+		user.refresh_from_db()
+		self.assertEqual(user.username, 'updated-user')
+		response = self.client.get(reverse('user_dashboard'))
+		self.assertContains(response, 'Your username was updated.')
+
+	def test_dashboard_rejects_an_existing_username(self):
+		user = self.create_user()
+		self.create_user(username='another-user')
+		self.client.force_login(user)
+
+		response = self.client.post(reverse('user_dashboard'), {'username': 'another-user'})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'A user with that username already exists.')
+		user.refresh_from_db()
+		self.assertEqual(user.username, 'test-user')
+
 	def test_homepage_displays_authenticated_username(self):
 		user = self.create_user()
 		self.client.force_login(user)
 
 		response = self.client.get(reverse('home'))
 
-		self.assertContains(response, f'Welcome, {user.username}!')
-		self.assertContains(response, 'Logout')
 		self.assertContains(
 			response,
-			'<button class="header-cta" type="button">Report an item</button>',
+			f'Welcome, <span class="account-username">{user.username}</span>!',
+			html=True,
+		)
+		self.assertContains(response, 'Log out')
+		self.assertContains(response, '<details class="account-menu">', html=False)
+		self.assertContains(response, '.account-menu:hover .account-menu-panel,')
+		self.assertContains(response, '.account-menu:focus-within .account-menu-panel,')
+		self.assertContains(response, '<span class="account-username">test-user</span>', html=True)
+		self.assertContains(response, '.account-menu summary:hover .account-username,')
+		self.assertContains(response, '.account-menu[open] .account-menu-panel { display: grid; }')
+		self.assertContains(
+			response,
+			f'<a class="header-cta" href="{reverse("found_report")}">Report an item</a>',
 			html=True,
 		)
 		self.assertContains(response, f'<form action="{reverse("logout")}" method="post">', html=False)
 		self.assertContains(
 			response,
-			'<button class="dashboard-action" type="button" disabled>Open your dashboard &nbsp;→</button>',
+			f'<a class="dashboard-action" href="{reverse("user_dashboard")}">Open your dashboard &nbsp;→</a>',
 			html=True,
 		)
-		self.assertNotContains(response, f'<a href="{reverse("login")}">Open your dashboard')
+		self.assertContains(response, f'href="{reverse("user_dashboard")}">Your dashboard</a>')
 
 	def test_homepage_shows_login_and_report_signup_links_when_logged_out(self):
 		response = self.client.get(reverse('home'))
@@ -147,6 +207,11 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, 'Log in')
 		self.assertContains(response, f'href="{reverse("signup")}"')
 		self.assertContains(response, 'Report an item')
+		self.assertContains(response, f'href="{reverse("found_report")}">I found something</a>')
+		self.assertContains(
+			response,
+			f'href="{reverse("login")}?next={reverse("user_dashboard")}">Open your dashboard',
+		)
 		self.assertContains(response, 'data-theme-toggle')
 
 	def test_homepage_light_mode_action_buttons_have_contrast(self):
@@ -206,3 +271,138 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, 'body.theme-dark .form-panel { background: #111918; }')
 		self.assertContains(response, 'body.theme-dark .auth-tabs { background: #202b29; }')
 		self.assertContains(response, 'body.theme-dark .auth-input {')
+
+
+class FoundItemReportTests(TestCase):
+	password = 'CampusFind!2026Strong'
+
+	def create_user(self):
+		return User.objects.create_user(
+			username='found-item-reporter',
+			email='found-item-reporter@example.com',
+			password=self.password,
+		)
+
+	def test_found_item_report_requires_login(self):
+		response = self.client.get(reverse('found_report'))
+
+		self.assertRedirects(
+			response,
+			f'{reverse("login")}?next={reverse("found_report")}',
+		)
+
+	def test_found_item_form_has_required_location_date_time_and_existing_categories(self):
+		self.client.force_login(self.create_user())
+
+		response = self.client.get(reverse('found_report'))
+
+		self.assertContains(response, 'Report a found item')
+		self.assertContains(response, '<select name="location"', html=False)
+		self.assertContains(response, 'name="date_found"')
+		self.assertContains(response, 'type="date"')
+		self.assertContains(response, 'name="time_found"')
+		self.assertContains(response, 'type="time"')
+		for category in ('Accessories', 'Bags &amp; Luggage', 'Electronics', 'Keys'):
+			with self.subTest(category=category):
+				self.assertContains(response, category)
+		for building in (
+			'Amphitheater',
+			'Aviation Center',
+			'Broad Hollow Bioscience Park One',
+			'Broad Hollow Bioscience Park Two',
+			'Campus Center',
+			'Campus Commons',
+			'Conference Center',
+			'Gleeson Hall',
+			'Greenley Library',
+			'Hale Hall',
+			'Hooper Hall',
+			'Horton Hall',
+			'Knapp Hall',
+			'Laffin Hall',
+			'Lupton Hall',
+			'Memorial Hall',
+			'Nold Athletic Complex',
+			'Quintyne Hall',
+			'Roosevelt Hall',
+			'School of Business',
+			'Sinclair Hall',
+			'Thompson Hall',
+			'Ward Hall',
+			'Whitman Hall',
+		):
+			with self.subTest(building=building):
+				self.assertContains(response, building)
+
+	def test_found_item_report_rejects_missing_required_details(self):
+		self.client.force_login(self.create_user())
+
+		response = self.client.post(reverse('found_report'), {'item_name': 'Umbrella'})
+
+		self.assertEqual(response.status_code, 200)
+		for field_name in ('category', 'location', 'date_found', 'time_found'):
+			with self.subTest(field=field_name):
+				self.assertContains(response, f'id="{field_name}-errors"')
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_found_item_report_rejects_categories_outside_the_dropdown(self):
+		self.client.force_login(self.create_user())
+
+		response = self.client.post(reverse('found_report'), {
+			'item_name': 'Umbrella',
+			'category': 'Furniture',
+			'location': 'Campus Center',
+			'date_found': '2026-11-10',
+			'time_found': '14:35',
+		})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Select a valid choice')
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_found_item_report_rejects_buildings_outside_the_dropdown(self):
+		self.client.force_login(self.create_user())
+
+		response = self.client.post(reverse('found_report'), {
+			'item_name': 'Umbrella',
+			'category': 'Accessories',
+			'location': 'Off Campus',
+			'date_found': '2026-11-10',
+			'time_found': '14:35',
+		})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Select a valid choice')
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_found_item_report_saves_and_appears_in_catalog(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		response = self.client.post(reverse('found_report'), {
+			'item_name': 'Blue water bottle',
+			'description': 'Found beside the north entrance.',
+			'category': 'Accessories',
+			'location': 'Campus Center',
+			'date_found': '2026-11-10',
+			'time_found': '14:35',
+		})
+
+		self.assertRedirects(
+			response,
+			reverse('found_report'),
+			fetch_redirect_response=False,
+		)
+		item = FoundItem.objects.get()
+		self.assertEqual(item.reporter, user)
+		self.assertEqual(item.category, 'Accessories')
+		self.assertEqual(item.location, 'Campus Center')
+		self.assertEqual(item.date_found.isoformat(), '2026-11-10')
+		self.assertEqual(item.time_found.strftime('%H:%M'), '14:35')
+
+		response = self.client.get(reverse('found_report'))
+		self.assertContains(response, 'Your found item was reported.')
+		response = self.client.get(reverse('home'))
+		self.assertContains(response, 'Blue water bottle')
+		self.assertContains(response, 'Campus Center')
+		self.assertContains(response, '2:35 PM')
