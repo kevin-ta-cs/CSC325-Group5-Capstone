@@ -2431,6 +2431,7 @@ def user_dashboard_page(
     for placeholder, value in (
         ("__HOME_URL__", reverse("home")),
         ("__BROWSE_ITEMS_URL__", reverse("browse_items")),
+        ("__DASHBOARD_URL__", reverse("user_dashboard")),
         ("__LOGOUT_URL__", reverse("logout")),
         ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__LOST_REPORT_URL__", f'{reverse("found_report")}?type=lost'),

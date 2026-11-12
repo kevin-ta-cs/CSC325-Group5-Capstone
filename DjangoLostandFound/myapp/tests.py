@@ -144,6 +144,12 @@ class AuthenticationTests(TestCase):
 		response = self.client.get(reverse('user_dashboard'))
 
 		self.assertContains(response, 'User dashboard')
+		self.assertContains(
+			response,
+			f'<a href="{reverse("user_dashboard")}">Dashboard</a>',
+			html=True,
+		)
+		self.assertNotContains(response, '__DASHBOARD_URL__')
 		self.assertContains(response, f'Welcome back, {user.username}.')
 		self.assertContains(response, user.username)
 		self.assertContains(response, user.email)
