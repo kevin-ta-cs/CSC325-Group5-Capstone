@@ -1,7 +1,10 @@
+import mimetypes
+
 from django.contrib.auth.views import LoginView
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse
+from django.core.exceptions import PermissionDenied
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_POST
 
@@ -66,6 +69,7 @@ def user_dashboard(request):
         request.user.has_perm('myapp.change_founditem')
         or request.user.has_perm('myapp.delete_founditem')
     )
+    can_approve_images = request.user.has_perm('myapp.change_founditem')
     own_items = list(request.user.found_items.order_by(
         '-date_found',
         '-time_found',
@@ -88,18 +92,30 @@ def user_dashboard(request):
             found_items,
             inquiries,
             can_manage_reports=can_manage_reports,
+            can_approve_images=can_approve_images,
         )
     )
 
 
 @login_required(login_url='login')
 def report_found_item(request):
-    form = FoundItemForm(request.POST if request.method == 'POST' else None)
+    form = FoundItemForm(
+        request.POST if request.method == 'POST' else None,
+        request.FILES if request.method == 'POST' else None,
+    )
     if request.method == 'POST' and form.is_valid():
         found_item = form.save(commit=False)
         found_item.reporter = request.user
         found_item.save()
-        messages.success(request, 'Your found item was reported.')
+        messages.success(
+            request,
+            'Your found item was reported.'
+            + (
+                ' Its image will appear after admin approval.'
+                if found_item.image
+                else ''
+            ),
+        )
         return redirect('found_report')
 
     return HttpResponse(found_item_page(request, form))
@@ -112,6 +128,44 @@ def _found_item_or_404(item_id):
     ):
         raise Http404
     return get_object_or_404(FoundItem, pk=item_id)
+
+
+def found_item_image(request, item_id):
+    item = _found_item_or_404(item_id)
+    if not item.image:
+        raise Http404
+    if not item.image_approved and not (
+        request.user.is_authenticated
+        and (
+            item.reporter_id == request.user.pk
+            or request.user.has_perm('myapp.change_founditem')
+        )
+    ):
+        raise Http404
+    response = FileResponse(
+        item.image.open('rb'),
+        content_type=(
+            mimetypes.guess_type(item.image.name)[0]
+            or 'application/octet-stream'
+        ),
+    )
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@login_required(login_url='login')
+@require_POST
+def approve_found_item_image(request, item_id):
+    if not request.user.has_perm('myapp.change_founditem'):
+        raise PermissionDenied
+    item = _found_item_or_404(item_id)
+    if not item.image:
+        messages.error(request, 'This report has no image to approve.')
+    else:
+        item.image_approved = True
+        item.save(update_fields=['image_approved'])
+        messages.success(request, 'The report image is now visible publicly.')
+    return redirect('user_dashboard')
 
 
 def found_item_detail(request, item_id):
@@ -193,11 +247,20 @@ def edit_found_item(request, item_id):
         )
     form = FoundItemForm(
         request.POST if request.method == 'POST' else None,
+        request.FILES if request.method == 'POST' else None,
         instance=found_item,
     )
     if request.method == 'POST' and form.is_valid():
         form.save()
-        messages.success(request, 'Your found item report was updated.')
+        messages.success(
+            request,
+            'Your found item report was updated.'
+            + (
+                ' Its new image is pending admin approval.'
+                if request.FILES.get('image')
+                else ''
+            ),
+        )
         return redirect('user_dashboard')
 
     return HttpResponse(found_item_page(request, form, editing=True))

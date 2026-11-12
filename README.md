@@ -74,6 +74,12 @@ request for saved found-item reports; requests appear only in the reporter's
 dashboard. Static sample listings are viewable but do not have a reporter to
 receive requests.
 
+Found-item reports may include an image. Uploaded images remain private to the
+reporter and report administrators until a user with `change_founditem`
+permission approves them from the dashboard or Django admin. Only approved
+images appear in public listings and detail pages. Uploaded files are stored
+under `DjangoLostandFound/media/`, which is excluded from Git.
+
 # Running the Project
 
 ## Prerequisites

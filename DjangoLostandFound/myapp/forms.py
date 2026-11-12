@@ -19,6 +19,12 @@ class DashboardUsernameForm(forms.ModelForm):
 
 
 class FoundItemForm(forms.ModelForm):
+    image = forms.ImageField(
+        required=False,
+        help_text="New images stay private until an admin approves them.",
+        widget=forms.FileInput(attrs={"accept": "image/*"}),
+    )
+
     class Meta:
         model = FoundItem
         fields = (
@@ -28,11 +34,21 @@ class FoundItemForm(forms.ModelForm):
             'location',
             'date_found',
             'time_found',
+            'image',
         )
         widgets = {
             'date_found': forms.DateInput(attrs={'type': 'date'}),
             'time_found': forms.TimeInput(attrs={'type': 'time'}),
         }
+
+    def save(self, commit=True):
+        found_item = super().save(commit=False)
+        if self.files.get(self.add_prefix("image")):
+            found_item.image_approved = False
+        if commit:
+            found_item.save()
+            self.save_m2m()
+        return found_item
 
 
 class FoundItemInquiryForm(forms.ModelForm):

@@ -701,8 +701,12 @@ def _catalog_reports():
             "building": item.location,
             "date": item.date_found.isoformat(),
             "time": item.time_found.strftime("%I:%M %p").lstrip("0"),
-            "image": "",
-            "alt": "",
+            "image": (
+                reverse("found_item_image", args=(item.pk,))
+                if item.image and item.image_approved
+                else ""
+            ),
+            "alt": item.item_name,
         }
         for item in FoundItem.objects.all()
     )
@@ -1316,8 +1320,12 @@ def found_item_detail_page(request, item, form, request_status):
             "date": date_format(item.date_found, "m/d/Y"),
             "time": item.time_found.strftime("%I:%M %p").lstrip("0"),
             "type": "Found item",
-            "image": "",
-            "alt": "",
+            "image": (
+                reverse("found_item_image", args=(item.pk,))
+                if item.image and item.image_approved
+                else ""
+            ),
+            "alt": item.item_name,
         }
     else:
         item_details = {
@@ -1458,6 +1466,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
     .form-field.full { grid-column: 1 / -1; }
     .form-field label { display: block; margin-bottom: 6px; color: #414648; font-size: .88rem; font-weight: 700; }
     body.theme-dark .form-field label { color: #d4dfdc; }
+    .field-help { margin: 6px 0 0; color: var(--muted); font-size: .82rem; }
     .report-input {
       display: block; width: 100%; min-height: 48px; padding: 11px 13px;
       border: 1px solid #dedfdf; border-radius: 12px; background: #fff; color: #27292a;
@@ -1555,7 +1564,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
         <h2 class="report-form-heading">__PAGE_TITLE__</h2>
         <p class="report-form-intro">__FORM_INTRO__</p>
         __NOTICES__
-        <form class="report-form" method="post">
+        <form class="report-form" method="post" enctype="multipart/form-data">
           __CSRF_INPUT__
           __ERROR_SUMMARY__
           __FORM_FIELDS__
@@ -1592,6 +1601,11 @@ FOUND_ITEM_PAGE = """<!doctype html>
 
 def _found_item_field(form, name, label, full_width=False):
     field = form[name]
+    described_by = []
+    if field.help_text:
+        described_by.append(f"{field.html_name}-help")
+    if field.errors:
+        described_by.append(f"{field.html_name}-errors")
     field_errors = (
         format_html(
             '<ul id="{}-errors" class="field-errors" role="alert">{}</ul>',
@@ -1601,8 +1615,17 @@ def _found_item_field(form, name, label, full_width=False):
         if field.errors
         else ""
     )
+    field_help = (
+        format_html(
+            '<p id="{}-help" class="field-help">{}</p>',
+            field.html_name,
+            field.help_text,
+        )
+        if field.help_text
+        else ""
+    )
     return format_html(
-        '<div class="form-field{}"><label for="{}">{}</label>{}{}</div>',
+        '<div class="form-field{}"><label for="{}">{}</label>{}{}{}</div>',
         " full" if full_width else "",
         field.id_for_label,
         label,
@@ -1610,13 +1633,10 @@ def _found_item_field(form, name, label, full_width=False):
             attrs={
                 "class": "report-input",
                 "aria-invalid": "true" if field.errors else "false",
-                **(
-                    {"aria-describedby": f"{field.html_name}-errors"}
-                    if field.errors
-                    else {}
-                ),
+                **({"aria-describedby": " ".join(described_by)} if described_by else {}),
             }
         ),
+        field_help,
         field_errors,
     )
 
@@ -1631,13 +1651,14 @@ def found_item_page(request, form, editing=False):
         else ""
     )
     form_fields = format_html(
-        "{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}",
         _found_item_field(form, "item_name", "Item name"),
         _found_item_field(form, "category", "Category"),
         _found_item_field(form, "location", "Building found"),
         _found_item_field(form, "date_found", "Date found"),
         _found_item_field(form, "time_found", "Time found"),
         _found_item_field(form, "description", "Description (optional)", full_width=True),
+        _found_item_field(form, "image", "Item image", full_width=True),
     )
     notices = format_html_join(
         "",
@@ -1676,7 +1697,7 @@ def found_item_page(request, form, editing=False):
     return page
 
 
-def _reported_item_card(request, item, show_reporter=False):
+def _reported_item_card(request, item, show_reporter=False, can_approve_images=False):
     description = (
         format_html(
             '<p class="owned-report-description">{}</p>',
@@ -1690,8 +1711,32 @@ def _reported_item_card(request, item, show_reporter=False):
         if show_reporter
         else ""
     )
+    image = (
+        format_html(
+            '<a href="{}"><img class="owned-report-image" src="{}" alt="Uploaded image for {}"></a>',
+            reverse("found_item_image", args=(item.pk,)),
+            reverse("found_item_image", args=(item.pk,)),
+            item.item_name,
+        )
+        if item.image and (
+            item.image_approved
+            or item.reporter_id == request.user.pk
+            or can_approve_images
+        )
+        else ""
+    )
+    image_status = (
+        format_html(
+            '<p class="owned-report-image-status">{}</p>',
+            "Image approved and visible publicly."
+            if item.image_approved
+            else "Image pending admin approval.",
+        )
+        if item.image
+        else ""
+    )
     actions = format_html(
-        '<div class="report-actions">{}{}</div>',
+        '<div class="report-actions">{}{}{}</div>',
         (
             format_html(
                 '<a href="{}">Edit</a>',
@@ -1713,10 +1758,20 @@ def _reported_item_card(request, item, show_reporter=False):
             or request.user.has_perm("myapp.delete_founditem")
             else ""
         ),
+        (
+            format_html(
+                '<form action="{}" method="post">{}'
+                '<button class="approve-image-button" type="submit">Approve image</button></form>',
+                reverse("approve_found_item_image", args=(item.pk,)),
+                csrf_input(request),
+            )
+            if item.image and not item.image_approved and can_approve_images
+            else ""
+        ),
     )
     return format_html(
         '<article class="owned-report"><div class="owned-report-content">'
-        '<h3>{}</h3><p class="owned-report-meta">{} · {} · {} at {}{}</p>{}'
+        '<h3>{}</h3><p class="owned-report-meta">{} · {} · {} at {}{}</p>{}{}{}'
         '</div>{}</article>',
         item.item_name,
         item.category,
@@ -1725,11 +1780,18 @@ def _reported_item_card(request, item, show_reporter=False):
         item.time_found.strftime("%I:%M %p").lstrip("0"),
         reporter,
         description,
+        image,
+        image_status,
         actions,
     )
 
 
-def _reported_items_markup(request, found_items, show_reporter=False):
+def _reported_items_markup(
+    request,
+    found_items,
+    show_reporter=False,
+    can_approve_images=False,
+):
     if not found_items:
         empty_message = (
             "There are no campus reports yet."
@@ -1745,7 +1807,14 @@ def _reported_items_markup(request, found_items, show_reporter=False):
         "",
         "{}",
         (
-            (_reported_item_card(request, item, show_reporter=show_reporter),)
+            (
+                _reported_item_card(
+                    request,
+                    item,
+                    show_reporter=show_reporter,
+                    can_approve_images=can_approve_images,
+                ),
+            )
             for item in found_items
         ),
     )
@@ -1913,6 +1982,9 @@ USER_DASHBOARD_PAGE = """<!doctype html>
     .report-actions { display: flex; align-items: center; gap: 14px; }
     .report-actions a { font-weight: 700; }
     .report-actions form { margin: 0; }
+    .owned-report-image { display: block; width: 96px; height: 72px; margin-top: 10px; border-radius: 8px; object-fit: cover; }
+    .owned-report-image-status { margin: 6px 0 0; color: var(--muted); font-size: .82rem; }
+    .approve-image-button { padding: 7px 10px; border: 0; border-radius: 8px; background: var(--teal); color: #fff; font-weight: 700; cursor: pointer; }
     .delete-button {
       min-height: 40px; padding: 7px 14px; border: 1px solid var(--danger);
       border-radius: 999px; background: transparent; color: var(--danger);
@@ -2084,10 +2156,17 @@ USER_DASHBOARD_PAGE = """<!doctype html>
 </html>"""
 
 
-def user_dashboard_page(request, form, found_items, inquiries, can_manage_reports=False):
+def user_dashboard_page(
+    request,
+    form,
+    found_items,
+    inquiries,
+    can_manage_reports=False,
+    can_approve_images=False,
+):
     username = form.instance.get_username()
     email = form.instance.email or "Not provided"
-    joined = date_format(form.instance.date_joined, "F j, Y")
+    joined = date_format(form.instance.date_joined.date(), "F j, Y")
     described_by = []
     if form["username"].help_text:
         described_by.append("username-help")
@@ -2138,6 +2217,7 @@ def user_dashboard_page(request, form, found_items, inquiries, can_manage_report
         request,
         found_items,
         show_reporter=can_manage_reports,
+        can_approve_images=can_approve_images,
     )
     information_requests = _information_requests_markup(inquiries)
     page = USER_DASHBOARD_PAGE

@@ -49,6 +49,8 @@ class FoundItem(models.Model):
     location = models.CharField(max_length=160, choices=BUILDING_CHOICES)
     date_found = models.DateField()
     time_found = models.TimeField()
+    image = models.ImageField(upload_to="found_item_images/", blank=True)
+    image_approved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

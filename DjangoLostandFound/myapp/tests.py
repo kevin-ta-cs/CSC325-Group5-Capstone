@@ -1,8 +1,12 @@
-from datetime import date, time
+from io import BytesIO
+import tempfile
+from datetime import date, datetime, time, timezone
 
+from PIL import Image
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .models import FoundItem, FoundItemInquiry
@@ -151,6 +155,16 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, 'Smart matches')
 		self.assertContains(response, 'Claims tracked')
 		self.assertContains(response, 'Item status tracking')
+
+	def test_dashboard_member_since_uses_account_creation_date(self):
+		user = self.create_user()
+		user.date_joined = datetime(2020, 5, 17, 23, 45, tzinfo=timezone.utc)
+		user.save(update_fields=['date_joined'])
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('user_dashboard'))
+
+		self.assertContains(response, '<dd>May 17, 2020</dd>', html=True)
 
 	def test_dashboard_updates_the_authenticated_users_username(self):
 		user = self.create_user()
@@ -358,6 +372,13 @@ class AuthenticationTests(TestCase):
 class FoundItemReportTests(TestCase):
 	password = 'CampusFind!2026Strong'
 
+	def setUp(self):
+		self.media_dir = tempfile.TemporaryDirectory()
+		self.addCleanup(self.media_dir.cleanup)
+		self.media_settings = override_settings(MEDIA_ROOT=self.media_dir.name)
+		self.media_settings.enable()
+		self.addCleanup(self.media_settings.disable)
+
 	def create_user(self):
 		return User.objects.create_user(
 			username='found-item-reporter',
@@ -374,6 +395,15 @@ class FoundItemReportTests(TestCase):
 			location='Campus Center',
 			date_found=date(2026, 11, 10),
 			time_found=time(14, 35),
+		)
+
+	def create_uploaded_image(self, name='found-item.png'):
+		image_data = BytesIO()
+		Image.new('RGB', (1, 1), color='teal').save(image_data, format='PNG')
+		return SimpleUploadedFile(
+			name,
+			image_data.getvalue(),
+			content_type='image/png',
 		)
 
 	def grant_item_admin_permissions(self, user, *codenames):
@@ -417,6 +447,9 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'type="date"')
 		self.assertContains(response, 'name="time_found"')
 		self.assertContains(response, 'type="time"')
+		self.assertContains(response, 'enctype="multipart/form-data"')
+		self.assertContains(response, 'name="image"')
+		self.assertContains(response, 'New images stay private until an admin approves them.')
 		self.assertContains(response, '>Publish report</button>', html=False)
 		for category in ('Accessories', 'Bags &amp; Luggage', 'Electronics', 'Keys'):
 			with self.subTest(category=category):
@@ -522,6 +555,157 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'Blue water bottle')
 		self.assertContains(response, 'Campus Center')
 		self.assertContains(response, '2:35 PM')
+
+	def test_uploaded_image_is_private_until_an_admin_approves_it(self):
+		reporter = self.create_user()
+		self.client.force_login(reporter)
+
+		response = self.client.post(
+			reverse('found_report'),
+			{
+				'item_name': 'Blue water bottle',
+				'description': 'Found beside the north entrance.',
+				'category': 'Accessories',
+				'location': 'Campus Center',
+				'date_found': '2026-11-10',
+				'time_found': '14:35',
+				'image': self.create_uploaded_image(),
+			},
+		)
+
+		self.assertRedirects(
+			response,
+			reverse('found_report'),
+			fetch_redirect_response=False,
+		)
+		item = FoundItem.objects.get()
+		self.assertTrue(item.image)
+		self.assertFalse(item.image_approved)
+
+		public_detail = self.client.get(
+			reverse('found_item_detail', args=(item.pk,)),
+		)
+		self.assertNotContains(
+			public_detail,
+			reverse('found_item_image', args=(item.pk,)),
+		)
+		self.client.logout()
+		self.assertEqual(
+			self.client.get(
+				reverse('found_item_image', args=(item.pk,)),
+			).status_code,
+			404,
+		)
+
+	def test_report_rejects_non_image_uploads(self):
+		self.client.force_login(self.create_user())
+
+		response = self.client.post(
+			reverse('found_report'),
+			{
+				'item_name': 'Blue water bottle',
+				'description': 'Found beside the north entrance.',
+				'category': 'Accessories',
+				'location': 'Campus Center',
+				'date_found': '2026-11-10',
+				'time_found': '14:35',
+				'image': SimpleUploadedFile(
+					'not-an-image.txt',
+					b'This is not an image.',
+					content_type='text/plain',
+				),
+			},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Upload a valid image')
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_only_an_admin_can_approve_and_publish_an_image(self):
+		reporter = self.create_user()
+		item = self.create_found_item(reporter, 'Blue water bottle')
+		item.image.save('found-item.png', self.create_uploaded_image(), save=True)
+		self.client.force_login(reporter)
+
+		response = self.client.post(
+			reverse('approve_found_item_image', args=(item.pk,)),
+		)
+		self.assertEqual(response.status_code, 403)
+		item.refresh_from_db()
+		self.assertFalse(item.image_approved)
+
+		admin_user = User.objects.create_user(
+			username='image-review-admin',
+			email='image-review-admin@example.com',
+			password=self.password,
+		)
+		admin_user.is_staff = True
+		admin_user.save()
+		self.grant_item_admin_permissions(admin_user, 'change_founditem')
+		self.client.force_login(admin_user)
+
+		dashboard = self.client.get(reverse('user_dashboard'))
+		self.assertContains(dashboard, 'Image pending admin approval.')
+		self.assertContains(dashboard, '>Approve image</button>')
+		response = self.client.post(
+			reverse('approve_found_item_image', args=(item.pk,)),
+		)
+		self.assertRedirects(
+			response,
+			reverse('user_dashboard'),
+			fetch_redirect_response=False,
+		)
+		item.refresh_from_db()
+		self.assertTrue(item.image_approved)
+		self.client.logout()
+
+		public_detail = self.client.get(
+			reverse('found_item_detail', args=(item.pk,)),
+		)
+		image_url = reverse('found_item_image', args=(item.pk,))
+		self.assertContains(
+			public_detail,
+			f'<img src="{image_url}"',
+			html=False,
+		)
+		self.assertContains(
+			self.client.get(reverse('browse_items')),
+			f'<img src="{image_url}" alt="Blue water bottle" loading="lazy">',
+			html=False,
+		)
+		self.assertEqual(
+			self.client.get(image_url).status_code,
+			200,
+		)
+
+	def test_replacing_an_approved_image_requires_new_approval(self):
+		reporter = self.create_user()
+		item = self.create_found_item(reporter, 'Blue water bottle')
+		item.image.save('old-image.png', self.create_uploaded_image('old-image.png'), save=True)
+		item.image_approved = True
+		item.save(update_fields=['image_approved'])
+		self.client.force_login(reporter)
+
+		response = self.client.post(
+			reverse('edit_found_item', args=(item.pk,)),
+			{
+				'item_name': item.item_name,
+				'description': item.description,
+				'category': item.category,
+				'location': item.location,
+				'date_found': item.date_found.isoformat(),
+				'time_found': item.time_found.strftime('%H:%M'),
+				'image': self.create_uploaded_image('replacement.png'),
+			},
+		)
+
+		self.assertRedirects(
+			response,
+			reverse('user_dashboard'),
+			fetch_redirect_response=False,
+		)
+		item.refresh_from_db()
+		self.assertFalse(item.image_approved)
 
 	def test_catalog_found_report_opens_its_item_details(self):
 		user = self.create_user()
