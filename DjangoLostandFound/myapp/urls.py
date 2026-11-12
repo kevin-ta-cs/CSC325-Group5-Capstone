@@ -9,6 +9,16 @@ urlpatterns = [
     path('signup/', views.signup, name='signup'),
     path('dashboard/', views.user_dashboard, name='user_dashboard'),
     path('report/found/', views.report_found_item, name='found_report'),
+    path(
+        'report/found/<str:item_id>/image/',
+        views.found_item_image,
+        name='found_item_image',
+    ),
+    path(
+        'report/found/<str:item_id>/approve-image/',
+        views.approve_found_item_image,
+        name='approve_found_item_image',
+    ),
     path('items/<str:item_id>/', views.found_item_detail, name='found_item_detail'),
     path(
         'report/found/<str:item_id>/request/',

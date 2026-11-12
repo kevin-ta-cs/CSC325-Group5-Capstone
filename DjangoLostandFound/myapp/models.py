@@ -9,6 +9,11 @@ ITEM_CATEGORY_CHOICES = (
     ("Keys", "Keys"),
 )
 
+REPORT_TYPE_CHOICES = (
+    ("lost", "Lost"),
+    ("found", "Found"),
+)
+
 BUILDING_CHOICES = (
     ("Amphitheater", "Amphitheater"),
     ("Aviation Center", "Aviation Center"),
@@ -43,12 +48,21 @@ class FoundItem(models.Model):
         on_delete=models.CASCADE,
         related_name="found_items",
     )
+    report_type = models.CharField(
+        max_length=5,
+        choices=REPORT_TYPE_CHOICES,
+        default="found",
+    )
     item_name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=32, choices=ITEM_CATEGORY_CHOICES)
     location = models.CharField(max_length=160, choices=BUILDING_CHOICES)
+    specific_area = models.CharField(max_length=160, blank=True)
+    ownership_question = models.CharField(max_length=255, blank=True)
     date_found = models.DateField()
-    time_found = models.TimeField()
+    time_found = models.TimeField(blank=True, null=True)
+    image = models.ImageField(upload_to="found_item_images/", blank=True)
+    image_approved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
