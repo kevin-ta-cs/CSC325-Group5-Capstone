@@ -22,13 +22,14 @@ class FoundItemAdmin(admin.ModelAdmin):
     form = FoundItemAdminForm
     list_display = (
         "item_name",
+        "report_type",
         "reporter",
         "category",
         "location",
         "date_found",
         "image_approved",
     )
-    list_filter = ("category", "location", "image_approved")
+    list_filter = ("report_type", "category", "location", "image_approved")
     readonly_fields = ("image_preview",)
     search_fields = ("item_name", "description")
 

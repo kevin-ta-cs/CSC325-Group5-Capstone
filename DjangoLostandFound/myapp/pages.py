@@ -693,14 +693,20 @@ def _catalog_reports():
     ]
     reports.extend(
         {
-            "type": "found",
+            "type": item.report_type,
             "item_id": str(item.pk),
             "category": item.category,
             "title": item.item_name,
-            "description": item.description,
+            "description": " ".join(
+                part for part in (item.specific_area, item.description) if part
+            ),
             "building": item.location,
             "date": item.date_found.isoformat(),
-            "time": item.time_found.strftime("%I:%M %p").lstrip("0"),
+            "time": (
+                item.time_found.strftime("%I:%M %p").lstrip("0")
+                if item.time_found
+                else ""
+            ),
             "image": (
                 reverse("found_item_image", args=(item.pk,))
                 if item.image and item.image_approved
@@ -1005,7 +1011,7 @@ def home_page(request):
         ("__ACCOUNT_URL__", account_url),
         ("__DASHBOARD_URL__", dashboard_url),
         ("__USER_DASHBOARD_URL__", reverse("user_dashboard")),
-        ("__REPORT_URL__", reverse("found_report")),
+        ("__REPORT_URL__", f'{reverse("found_report")}?type=lost'),
         ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__BROWSE_ITEMS_URL__", reverse("browse_items")),
         ("__FILTERS__", str(_filter_form(request, "#recent-items"))),
@@ -1027,7 +1033,7 @@ def browse_items_page(request):
         ("__ACCOUNT_LINK__", str(account_link)),
         ("__ACCOUNT_URL__", account_url),
         ("__DASHBOARD_URL__", dashboard_url),
-        ("__REPORT_URL__", reverse("found_report")),
+        ("__REPORT_URL__", f'{reverse("found_report")}?type=lost'),
         ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__BROWSE_ITEMS_URL__", reverse("browse_items")),
         ("__FILTERS__", str(_filter_form(request, reverse("browse_items")))),
@@ -1126,6 +1132,9 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
     body.theme-dark .request-icon { background: #263a36; color: #8ce8d8; }
     .request-panel h2 { margin: 0; font-size: clamp(1.6rem, 3vw, 2.2rem); letter-spacing: -.03em; line-height: 1.2; }
     .request-intro { margin: 12px 0 26px; color: var(--muted); font-size: 1rem; }
+    .ownership-question { margin: 0 0 18px; padding: 14px; border-radius: 12px; background: #eaf7f4; color: #173d38; }
+    .ownership-question p { margin: 6px 0 0; }
+    body.theme-dark .ownership-question { background: #263a36; color: #eef5f3; }
     .notice { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #f5faf8; }
     body.theme-dark .notice { background: #111918; color: var(--ink); }
     .inquiry-form label { display: block; margin-bottom: 8px; font-weight: 750; }
@@ -1211,9 +1220,10 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
           <h1>__ITEM_TITLE__</h1>
           <p class="item-description">__ITEM_DESCRIPTION__</p>
           <dl class="item-facts">
-            <div><dt>Building found</dt><dd>__ITEM_LOCATION__</dd></div>
-            <div><dt>Date found</dt><dd>__ITEM_DATE__</dd></div>
-            <div><dt>Time found</dt><dd>__ITEM_TIME__</dd></div>
+            <div><dt>__ITEM_LOCATION_LABEL__</dt><dd>__ITEM_LOCATION__</dd></div>
+            <div><dt>__ITEM_DATE_LABEL__</dt><dd>__ITEM_DATE__</dd></div>
+            __ITEM_TIME_FACT__
+            __ITEM_SPECIFIC_AREA_FACT__
           </dl>
         </div>
       </article>
@@ -1221,6 +1231,7 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
         <div class="request-icon" aria-hidden="true">✓</div>
         <h2 id="request-heading">Request information privately</h2>
         <p class="request-intro">Your message will only be shared with the person who reported this item. Contact details stay private.</p>
+        __OWNERSHIP_QUESTION__
         __NOTICES__
         __REQUEST_CONTENT__
       </aside>
@@ -1318,8 +1329,22 @@ def found_item_detail_page(request, item, form, request_status):
             "description": item.description or "No description was provided.",
             "location": item.location,
             "date": date_format(item.date_found, "m/d/Y"),
-            "time": item.time_found.strftime("%I:%M %p").lstrip("0"),
-            "type": "Found item",
+            "time": (
+                item.time_found.strftime("%I:%M %p").lstrip("0")
+                if item.time_found
+                else ""
+            ),
+            "specific_area": item.specific_area,
+            "type": f'{item.get_report_type_display()} item',
+            "location_label": (
+                "Building lost" if item.report_type == "lost" else "Building found"
+            ),
+            "date_label": (
+                "Date lost" if item.report_type == "lost" else "Date found"
+            ),
+            "time_label": (
+                "Time lost" if item.report_type == "lost" else "Time found"
+            ),
             "image": (
                 reverse("found_item_image", args=(item.pk,))
                 if item.image and item.image_approved
@@ -1327,6 +1352,15 @@ def found_item_detail_page(request, item, form, request_status):
             ),
             "alt": item.item_name,
         }
+        ownership_question = (
+            format_html(
+                '<div class="ownership-question"><strong>To verify that this is yours, answer privately:</strong><p>{}</p>'
+                '<p>Include your answer in your private request.</p></div>',
+                item.ownership_question,
+            )
+            if item.report_type == "found" and item.ownership_question
+            else ""
+        )
     else:
         item_details = {
             "title": item["title"],
@@ -1336,10 +1370,21 @@ def found_item_detail_page(request, item, form, request_status):
             "location": item["building"],
             "date": date.fromisoformat(item["date"]).strftime("%m/%d/%Y"),
             "time": item.get("time", "Not provided"),
+            "specific_area": "",
             "type": f'{item["type"].title()} item',
+            "location_label": (
+                "Building lost" if item["type"] == "lost" else "Building found"
+            ),
+            "date_label": (
+                "Date lost" if item["type"] == "lost" else "Date found"
+            ),
+            "time_label": (
+                "Time lost" if item["type"] == "lost" else "Time found"
+            ),
             "image": item["image"],
             "alt": item["alt"],
         }
+        ownership_question = ""
     item_media = (
         format_html(
             '<img src="{}" alt="{}">',
@@ -1360,7 +1405,7 @@ def found_item_detail_page(request, item, form, request_status):
             if request.user.is_authenticated
             else reverse("login")
         ),
-        "__LOST_REPORT_URL__": reverse("found_report"),
+        "__LOST_REPORT_URL__": f'{reverse("found_report")}?type=lost',
         "__FOUND_REPORT_URL__": reverse("found_report"),
         "__YEAR__": str(date.today().year),
         "__ITEM_MEDIA__": str(item_media),
@@ -1369,9 +1414,28 @@ def found_item_detail_page(request, item, form, request_status):
         "__CATEGORY__": format_html("{}", item_details["category"]),
         "__ITEM_DESCRIPTION__": format_html("{}", item_details["description"]),
         "__ITEM_LOCATION__": format_html("{}", item_details["location"]),
+        "__ITEM_LOCATION_LABEL__": item_details["location_label"],
+        "__ITEM_DATE_LABEL__": item_details["date_label"],
         "__ITEM_DATE__": item_details["date"],
-        "__ITEM_TIME__": item_details["time"],
+        "__ITEM_TIME_FACT__": (
+            format_html(
+                '<div><dt>{}</dt><dd>{}</dd></div>',
+                item_details["time_label"],
+                item_details["time"],
+            )
+            if item_details["time"]
+            else ""
+        ),
+        "__ITEM_SPECIFIC_AREA_FACT__": (
+            format_html(
+                '<div><dt>Specific area</dt><dd>{}</dd></div>',
+                item_details["specific_area"],
+            )
+            if item_details["specific_area"]
+            else ""
+        ),
         "__NOTICES__": str(notices),
+        "__OWNERSHIP_QUESTION__": str(ownership_question),
         "__REQUEST_CONTENT__": str(request_content),
         "__THEME_SCRIPT__": _theme_script(),
     }
@@ -1445,8 +1509,18 @@ FOUND_ITEM_PAGE = """<!doctype html>
     }
     body.theme-dark .header-actions .header-cta { border: 1px solid #34786f; background: #075d56; color: #eef5f3; }
     main { width: min(1280px, calc(100% - 64px)); margin: 0 auto; padding: 52px 0 76px; }
-    .report-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(480px, 1.1fr); align-items: center; gap: 56px; }
-    .report-copy { max-width: 560px; }
+    .report-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(480px, 1.1fr); align-items: start; gap: 56px; }
+    .report-copy {
+      max-width: 560px; align-self: start;
+      margin-top: clamp(0px, calc(50vh - 416px), 160px);
+      padding: clamp(24px, 3vw, 36px);
+      border: 1px solid rgba(102,216,198,.3); border-radius: 24px;
+      background: #123a35; box-shadow: 0 20px 50px rgba(0,0,0,.2);
+    }
+    body.theme-light .report-copy {
+      border-color: #c3dfd8; background: #fff;
+      box-shadow: 0 20px 50px rgba(20,59,55,.12);
+    }
     .eyebrow { margin: 0 0 14px; color: var(--teal-bright); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
     h1 { max-width: 560px; margin: 0 0 16px; font-size: clamp(2.4rem, 4vw, 3.5rem); letter-spacing: -.045em; line-height: 1.08; }
     .intro { margin: 0 0 28px; color: rgba(255,255,255,.82); font-size: 1.02rem; }
@@ -1461,6 +1535,15 @@ FOUND_ITEM_PAGE = """<!doctype html>
     .report-form-intro { margin: -12px 0 22px; color: var(--muted); font-size: .9rem; }
     .report-type { display: inline-flex; margin: 0 0 12px; padding: 6px 12px; border-radius: 999px; background: #eaf7f4; color: #087c70; font-size: .78rem; font-weight: 800; }
     body.theme-dark .report-type { background: #263a36; color: #8ce8d8; }
+    .report-toggle { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin: 0 0 20px; padding: 5px; border-radius: 14px; background: #edf2f0; }
+    .report-toggle-option { padding: 12px 10px; border: 0; border-radius: 10px; background: transparent; color: #46534f; font: inherit; font-size: .9rem; font-weight: 750; text-align: center; cursor: pointer; }
+    .report-toggle-option.active,
+    .report-toggle-option[aria-pressed="true"] { background: #075d56; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+    body.theme-dark .report-toggle { background: #192321; }
+    body.theme-dark .report-toggle-option { color: #d4dfdc; }
+    body.theme-dark .report-toggle-option.active,
+    body.theme-dark .report-toggle-option[aria-pressed="true"] { background: #075d56; color: #fff; }
+    .report-form [hidden] { display: none !important; }
     .report-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
     .form-field { min-width: 0; }
     .form-field.full { grid-column: 1 / -1; }
@@ -1498,7 +1581,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
     }
     @media (max-width: 900px) {
       .report-layout { grid-template-columns: 1fr; gap: 32px; }
-      .report-copy { max-width: 720px; }
+      .report-copy { max-width: 720px; margin-top: 0; }
       .report-card { max-width: 760px; }
     }
     @media (max-width: 850px) {
@@ -1559,17 +1642,19 @@ FOUND_ITEM_PAGE = """<!doctype html>
           <p><span aria-hidden="true">◈</span>Private information requests</p>
         </div>
       </section>
-      <section class="report-card" aria-label="Found item details">
-        <p class="report-type">Found item</p>
-        <h2 class="report-form-heading">__PAGE_TITLE__</h2>
-        <p class="report-form-intro">__FORM_INTRO__</p>
+      <section class="report-card" aria-label="__REPORT_CARD_LABEL__">
+        __REPORT_TOGGLE__
+        <p class="report-type" data-report-type-text data-lost-text="Lost item" data-found-text="Found item">__REPORT_TYPE_LABEL__ item</p>
+        <h2 class="report-form-heading" data-report-type-text data-lost-text="Report a lost item" data-found-text="Report a found item">__PAGE_TITLE__</h2>
+        <p class="report-form-intro" data-report-type-text data-lost-text="Share where and when you last had the item so others can help you find it." data-found-text="Share where and when you found the item so its owner can recognize it.">__FORM_INTRO__</p>
         __NOTICES__
         <form class="report-form" method="post" enctype="multipart/form-data">
           __CSRF_INPUT__
+          __REPORT_TYPE_INPUT__
           __ERROR_SUMMARY__
           __FORM_FIELDS__
-          <p class="form-footer">Your report will be listed with its category, location, and found date and time.</p>
-          <button class="submit-button" type="submit">__SUBMIT_LABEL__</button>
+          <p class="form-footer">Your report will be listed with its category, campus building, and date. Found-item reports also include the time found.</p>
+          <button class="submit-button" type="submit" data-report-type-text data-lost-text="Publish lost item report" data-found-text="Publish found item report">__SUBMIT_LABEL__</button>
         </form>
       </section>
     </div>
@@ -1595,11 +1680,20 @@ FOUND_ITEM_PAGE = """<!doctype html>
     <div class="wrap copyright">© __YEAR__ FindIt. Built for safer campus returns.</div>
   </footer>
   __THEME_SCRIPT__
+  __REPORT_TYPE_SCRIPT__
 </body>
 </html>"""
 
 
-def _found_item_field(form, name, label, full_width=False):
+def _found_item_field(
+    form,
+    name,
+    label,
+    full_width=False,
+    type_labels=None,
+    visible_for=None,
+    report_type="found",
+):
     field = form[name]
     described_by = []
     if field.help_text:
@@ -1624,10 +1718,32 @@ def _found_item_field(form, name, label, full_width=False):
         if field.help_text
         else ""
     )
+    label_attrs = (
+        format_html(
+            ' data-lost-label="{}" data-found-label="{}"',
+            type_labels[0],
+            type_labels[1],
+        )
+        if type_labels
+        else ""
+    )
+    visibility_attrs = (
+        format_html(
+            ' data-report-only="{}"{}',
+            visible_for,
+            format_html(' hidden="{}"', "hidden")
+            if visible_for != report_type
+            else "",
+        )
+        if visible_for
+        else ""
+    )
     return format_html(
-        '<div class="form-field{}"><label for="{}">{}</label>{}{}{}</div>',
+        '<div class="form-field{}"{}><label for="{}"{}>{}</label>{}{}{}</div>',
         " full" if full_width else "",
+        visibility_attrs,
         field.id_for_label,
+        label_attrs,
         label,
         field.as_widget(
             attrs={
@@ -1642,6 +1758,25 @@ def _found_item_field(form, name, label, full_width=False):
 
 
 def found_item_page(request, form, editing=False):
+    report_type = form["report_type"].value()
+    if report_type not in {"lost", "found"}:
+        report_type = "found"
+    is_lost = report_type == "lost"
+    type_label = "lost" if is_lost else "found"
+    report_toggle = (
+        format_html(
+            '<div class="report-toggle" role="group" aria-label="Report type">'
+            '<button class="report-toggle-option{}" type="button" data-report-type="lost" aria-pressed="{}">I Lost Something</button>'
+            '<button class="report-toggle-option{}" type="button" data-report-type="found" aria-pressed="{}">I Found Something</button>'
+            '</div>',
+            " active" if is_lost else "",
+            "true" if is_lost else "false",
+            " active" if not is_lost else "",
+            "false" if is_lost else "true",
+        )
+        if not editing
+        else ""
+    )
     error_summary = (
         format_html(
             '<ul class="error-summary" role="alert">{}</ul>',
@@ -1651,14 +1786,41 @@ def found_item_page(request, form, editing=False):
         else ""
     )
     form_fields = format_html(
-        "{}{}{}{}{}{}{}",
-        _found_item_field(form, "item_name", "Item name"),
+        "{}{}{}{}{}{}{}{}{}",
+        _found_item_field(form, "item_name", "Item name", full_width=True, report_type=report_type),
         _found_item_field(form, "category", "Category"),
-        _found_item_field(form, "location", "Building found"),
-        _found_item_field(form, "date_found", "Date found"),
-        _found_item_field(form, "time_found", "Time found"),
-        _found_item_field(form, "description", "Description (optional)", full_width=True),
-        _found_item_field(form, "image", "Item image", full_width=True),
+        _found_item_field(form, "location", "Campus building", report_type=report_type),
+        _found_item_field(
+            form,
+            "date_found",
+            "Date lost" if is_lost else "Date found",
+            type_labels=("Date lost", "Date found"),
+            report_type=report_type,
+        ),
+        _found_item_field(form, "specific_area", "Specific area", report_type=report_type),
+        _found_item_field(
+            form,
+            "time_found",
+            "Time found",
+            visible_for="found",
+            report_type=report_type,
+        ),
+        _found_item_field(
+            form,
+            "description",
+            "Description (optional)",
+            full_width=True,
+            report_type=report_type,
+        ),
+        _found_item_field(form, "image", "Item image", full_width=True, report_type=report_type),
+        _found_item_field(
+            form,
+            "ownership_question",
+            "Secure ownership question",
+            full_width=True,
+            visible_for="found",
+            report_type=report_type,
+        ),
     )
     notices = format_html_join(
         "",
@@ -1672,26 +1834,62 @@ def found_item_page(request, form, editing=False):
         ("__DASHBOARD_URL__", reverse("user_dashboard")),
         ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__LOGOUT_URL__", reverse("logout")),
-        ("__LOST_REPORT_URL__", reverse("found_report")),
-        ("__PAGE_TITLE__", "Edit found item" if editing else "Report a found item"),
+        ("__LOST_REPORT_URL__", f'{reverse("found_report")}?type=lost'),
+        ("__REPORT_CARD_LABEL__", f"{type_label.title()} item details"),
+        ("__REPORT_TOGGLE__", str(report_toggle)),
+        ("__REPORT_TYPE_LABEL__", type_label.title()),
+        ("__REPORT_TYPE_INPUT__", str(form["report_type"])),
+        ("__PAGE_TITLE__", f"Edit {type_label} item" if editing else f"Report a {type_label} item"),
         (
             "__FORM_INTRO__",
             (
-                "Update the item details below."
+                f"Update the {type_label} item details below."
                 if editing
-                else "Share where and when you found the item so its owner can recognize it."
+                else (
+                    "Share where and when you last had the item so others can help you find it."
+                    if is_lost
+                    else "Share where and when you found the item so its owner can recognize it."
+                )
             ),
         ),
-        (
-            "__SUBMIT_LABEL__",
-            "Save changes" if editing else "Publish report",
-        ),
+        ("__SUBMIT_LABEL__", "Save changes" if editing else f"Publish {type_label} item report"),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__ERROR_SUMMARY__", str(error_summary)),
         ("__FORM_FIELDS__", str(form_fields)),
         ("__NOTICES__", str(notices)),
         ("__YEAR__", str(date.today().year)),
         ("__THEME_SCRIPT__", _theme_script()),
+        (
+            "__REPORT_TYPE_SCRIPT__",
+            (
+                '<script>(function(){'
+                'const form=document.querySelector(".report-card form");'
+                'if(!form)return;'
+                'const typeInput=form.querySelector("[name=report_type]");'
+                'const buttons=document.querySelectorAll("[data-report-type]");'
+                'if(!typeInput||!buttons.length)return;'
+                'function selectType(type){'
+                'typeInput.value=type;'
+                'buttons.forEach(button=>{'
+                'const active=button.dataset.reportType===type;'
+                'button.classList.toggle("active",active);'
+                'button.setAttribute("aria-pressed",active?"true":"false");'
+                '});'
+                'document.querySelectorAll("[data-lost-label]").forEach(label=>{'
+                'label.textContent=type==="lost"?label.dataset.lostLabel:label.dataset.foundLabel;'
+                '});'
+                'document.querySelectorAll("[data-report-only]").forEach(field=>{'
+                'field.hidden=field.dataset.reportOnly!==type;'
+                '});'
+                'document.querySelectorAll("[data-report-type-text]").forEach(element=>{'
+                'element.textContent=type==="lost"?element.dataset.lostText:element.dataset.foundText;'
+                '});'
+                '}'
+                'buttons.forEach(button=>button.addEventListener("click",()=>selectType(button.dataset.reportType)));'
+                'selectType(typeInput.value);'
+                '})();</script>'
+            ),
+        ),
     ):
         page = page.replace(placeholder, value)
     return page
@@ -1709,6 +1907,13 @@ def _reported_item_card(request, item, show_reporter=False, can_approve_images=F
     reporter = (
         format_html(' · Reported by {}', item.reporter.get_username())
         if show_reporter
+        else ""
+    )
+    report_type = item.get_report_type_display()
+    date_label = "lost on" if item.report_type == "lost" else "found on"
+    time_at = (
+        f' at {item.time_found.strftime("%I:%M %p").lstrip("0")}'
+        if item.time_found
         else ""
     )
     image = (
@@ -1771,13 +1976,15 @@ def _reported_item_card(request, item, show_reporter=False, can_approve_images=F
     )
     return format_html(
         '<article class="owned-report"><div class="owned-report-content">'
-        '<h3>{}</h3><p class="owned-report-meta">{} · {} · {} at {}{}</p>{}{}{}'
+        '<h3>{}</h3><p class="owned-report-meta">{} item · {} · {} · {} {}{}{}</p>{}{}{}'
         '</div>{}</article>',
         item.item_name,
+        report_type,
         item.category,
         item.location,
+        date_label,
         date_format(item.date_found, "M j, Y"),
-        item.time_found.strftime("%I:%M %p").lstrip("0"),
+        time_at,
         reporter,
         description,
         image,
@@ -2226,7 +2433,7 @@ def user_dashboard_page(
         ("__BROWSE_ITEMS_URL__", reverse("browse_items")),
         ("__LOGOUT_URL__", reverse("logout")),
         ("__FOUND_REPORT_URL__", reverse("found_report")),
-        ("__LOST_REPORT_URL__", reverse("found_report")),
+        ("__LOST_REPORT_URL__", f'{reverse("found_report")}?type=lost'),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__USERNAME__", format_html("{}", username)),
         ("__ADMIN_ICON__", str(admin_icon)),

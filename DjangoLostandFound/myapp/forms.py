@@ -19,6 +19,12 @@ class DashboardUsernameForm(forms.ModelForm):
 
 
 class FoundItemForm(forms.ModelForm):
+    ownership_question = forms.CharField(
+        required=False,
+        max_length=255,
+        help_text="Claimants answer privately. Avoid revealing the answer in the description.",
+    )
+
     image = forms.ImageField(
         required=False,
         help_text="New images stay private until an admin approves them.",
@@ -28,18 +34,37 @@ class FoundItemForm(forms.ModelForm):
     class Meta:
         model = FoundItem
         fields = (
+            'report_type',
             'item_name',
             'description',
             'category',
             'location',
+            'specific_area',
+            'ownership_question',
             'date_found',
             'time_found',
             'image',
         )
         widgets = {
+            'report_type': forms.HiddenInput(),
             'date_found': forms.DateInput(attrs={'type': 'date'}),
             'time_found': forms.TimeInput(attrs={'type': 'time'}),
+            'specific_area': forms.TextInput(
+                attrs={'placeholder': 'Floor, room, or nearby landmark'}
+            ),
         }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if (
+            cleaned_data.get('report_type') == 'found'
+            and not cleaned_data.get('time_found')
+        ):
+            self.add_error('time_found', 'Enter the time the item was found.')
+        if cleaned_data.get('report_type') == 'lost':
+            cleaned_data['ownership_question'] = ''
+            cleaned_data['time_found'] = None
+        return cleaned_data
 
     def save(self, commit=True):
         found_item = super().save(commit=False)

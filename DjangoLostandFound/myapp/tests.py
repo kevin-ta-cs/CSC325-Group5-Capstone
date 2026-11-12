@@ -450,7 +450,18 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'enctype="multipart/form-data"')
 		self.assertContains(response, 'name="image"')
 		self.assertContains(response, 'New images stay private until an admin approves them.')
-		self.assertContains(response, '>Publish report</button>', html=False)
+		self.assertContains(response, '>Publish found item report</button>', html=False)
+		self.assertContains(response, 'I Lost Something')
+		self.assertContains(response, 'I Found Something')
+		self.assertContains(
+			response,
+			'<button class="report-toggle-option active" type="button" data-report-type="found" aria-pressed="true">I Found Something</button>',
+			html=True,
+		)
+		self.assertContains(response, 'name="specific_area"')
+		self.assertContains(response, 'name="ownership_question"')
+		self.assertContains(response, 'data-report-type="lost"')
+		self.assertContains(response, 'selectType(typeInput.value)')
 		for category in ('Accessories', 'Bags &amp; Luggage', 'Electronics', 'Keys'):
 			with self.subTest(category=category):
 				self.assertContains(response, category)
@@ -533,6 +544,8 @@ class FoundItemReportTests(TestCase):
 			'description': 'Found beside the north entrance.',
 			'category': 'Accessories',
 			'location': 'Campus Center',
+			'specific_area': 'By the north entrance',
+			'ownership_question': 'What sticker is on the bottle?',
 			'date_found': '2026-11-10',
 			'time_found': '14:35',
 		})
@@ -544,8 +557,11 @@ class FoundItemReportTests(TestCase):
 		)
 		item = FoundItem.objects.get()
 		self.assertEqual(item.reporter, user)
+		self.assertEqual(item.report_type, 'found')
 		self.assertEqual(item.category, 'Accessories')
 		self.assertEqual(item.location, 'Campus Center')
+		self.assertEqual(item.specific_area, 'By the north entrance')
+		self.assertEqual(item.ownership_question, 'What sticker is on the bottle?')
 		self.assertEqual(item.date_found.isoformat(), '2026-11-10')
 		self.assertEqual(item.time_found.strftime('%H:%M'), '14:35')
 
@@ -554,7 +570,60 @@ class FoundItemReportTests(TestCase):
 		response = self.client.get(reverse('browse_items'))
 		self.assertContains(response, 'Blue water bottle')
 		self.assertContains(response, 'Campus Center')
+		self.assertContains(response, 'By the north entrance')
 		self.assertContains(response, '2:35 PM')
+		detail = self.client.get(reverse('found_item_detail', args=(item.pk,)))
+		self.assertContains(detail, 'What sticker is on the bottle?')
+
+	def test_report_form_can_toggle_and_submit_a_lost_item_report(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('found_report'), {'type': 'lost'})
+
+		self.assertContains(response, 'data-lost-text="Report a lost item"')
+		self.assertContains(response, 'Campus building')
+		self.assertContains(response, 'Date lost')
+		self.assertContains(response, 'Specific area')
+		self.assertContains(response, 'data-report-only="found" hidden="hidden"')
+		self.assertContains(response, '>Publish lost item report</button>', html=False)
+		self.assertContains(
+			response,
+			'<button class="report-toggle-option active" type="button" data-report-type="lost" aria-pressed="true">I Lost Something</button>',
+			html=True,
+		)
+		self.assertContains(response, 'name="report_type" value="lost"')
+
+		response = self.client.post(
+			reverse('found_report'),
+			{
+				'report_type': 'lost',
+				'item_name': 'Lost blue backpack',
+				'description': 'Last seen near the library.',
+				'category': 'Bags & Luggage',
+				'location': 'Greenley Library',
+				'date_found': '2026-11-10',
+				'specific_area': 'Near the north entrance',
+			},
+		)
+
+		self.assertRedirects(
+			response,
+			reverse('found_report'),
+			fetch_redirect_response=False,
+		)
+		item = FoundItem.objects.get()
+		self.assertEqual(item.report_type, 'lost')
+		self.assertEqual(item.specific_area, 'Near the north entrance')
+		self.assertIsNone(item.time_found)
+
+		detail = self.client.get(reverse('found_item_detail', args=(item.pk,)))
+		self.assertContains(detail, 'Lost item')
+		self.assertContains(detail, '<dt>Building lost</dt>', html=True)
+		self.assertContains(detail, '<dt>Date lost</dt>', html=True)
+		self.assertContains(detail, '<dt>Specific area</dt>', html=True)
+		self.assertNotContains(detail, '<dt>Time lost</dt>', html=False)
+		self.assertContains(self.client.get(reverse('browse_items'), {'type': 'lost'}), 'Lost blue backpack')
 
 	def test_uploaded_image_is_private_until_an_admin_approves_it(self):
 		reporter = self.create_user()

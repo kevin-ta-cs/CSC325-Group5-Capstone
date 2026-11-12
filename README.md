@@ -61,18 +61,23 @@ Examples:
 The Django views generate the browser pages from Python source. The project does
 not use separate HTML template files.
 
-Signed-in members can submit found-item reports with a required category,
-campus building, date found, and time found. Buildings are selected from the
-existing campus building list. Submitted reports are saved and displayed in
-the campus catalog; the category choices match the catalog filters. The home
-page shows up to six randomly selected reports, while Browse items opens the
-full searchable and filterable catalog. Members can edit or delete their own
-found-item reports from the user dashboard.
-Selecting any catalog item opens a detail page with its category, description,
-building, date, and time. Signed-in users can send a private information
-request for saved found-item reports; requests appear only in the reporter's
-dashboard. Static sample listings are viewable but do not have a reporter to
-receive requests.
+Signed-in members can toggle between lost-item and found-item reports. Each
+report includes a required category, campus building, and date, with labels
+reflecting whether the item was lost or found. Found-item reports also collect
+a time. Both types support a specific-area detail. Buildings are selected from
+the existing campus building list. Submitted reports are saved and displayed
+in the campus catalog; the category choices match the catalog filters. The
+home page shows up to six randomly selected reports, while Browse items opens
+the full searchable and filterable catalog. Members can edit or delete their
+own reports from the user dashboard.
+
+The report form follows the prototype's in-place lost/found toggle. Found
+reports may include an ownership-verification question; claimants can answer it
+in a private request. Selecting a catalog item opens its detail page with its
+category, description, building, date, and (for found reports) time. Signed-in
+users can send private information requests for saved reports; requests appear
+only in the reporter's dashboard. Static sample listings are viewable but do
+not have a reporter to receive requests.
 
 Found-item reports may include an image. Uploaded images remain private to the
 reporter and report administrators until a user with `change_founditem`

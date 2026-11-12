@@ -99,9 +99,19 @@ def user_dashboard(request):
 
 @login_required(login_url='login')
 def report_found_item(request):
+    form_data = request.POST.copy() if request.method == 'POST' else None
+    if form_data is not None and not form_data.get('report_type'):
+        form_data['report_type'] = 'found'
     form = FoundItemForm(
-        request.POST if request.method == 'POST' else None,
+        form_data,
         request.FILES if request.method == 'POST' else None,
+        initial={
+            'report_type': (
+                request.GET.get('type')
+                if request.GET.get('type') in {'lost', 'found'}
+                else 'found'
+            )
+        } if request.method != 'POST' else None,
     )
     if request.method == 'POST' and form.is_valid():
         found_item = form.save(commit=False)
@@ -109,7 +119,7 @@ def report_found_item(request):
         found_item.save()
         messages.success(
             request,
-            'Your found item was reported.'
+            f'Your {found_item.get_report_type_display().lower()} item was reported.'
             + (
                 ' Its image will appear after admin approval.'
                 if found_item.image
@@ -245,8 +255,11 @@ def edit_found_item(request, item_id):
             pk=item_id,
             reporter=request.user,
         )
+    form_data = request.POST.copy() if request.method == 'POST' else None
+    if form_data is not None:
+        form_data['report_type'] = found_item.report_type
     form = FoundItemForm(
-        request.POST if request.method == 'POST' else None,
+        form_data,
         request.FILES if request.method == 'POST' else None,
         instance=found_item,
     )
@@ -254,7 +267,7 @@ def edit_found_item(request, item_id):
         form.save()
         messages.success(
             request,
-            'Your found item report was updated.'
+            f'Your {found_item.get_report_type_display().lower()} item report was updated.'
             + (
                 ' Its new image is pending admin approval.'
                 if request.FILES.get('image')
