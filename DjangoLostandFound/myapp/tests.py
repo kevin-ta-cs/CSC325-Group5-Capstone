@@ -1,6 +1,7 @@
 from datetime import date, time
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 
@@ -43,14 +44,13 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, 'Username')
 		self.assertContains(response, 'Campus email')
 		self.assertContains(response, 'Confirm password')
-		self.assertContains(response, f'href="{reverse("found_report")}">Report found</a>')
 		self.assertContains(response, 'name="csrfmiddlewaretoken"')
 		self.assertContains(response, 'aria-current="page">Create account</a>')
 		self.assertContains(response, 'data-theme-toggle')
 		self.assertContains(response, 'localStorage.setItem(storageKey, theme)')
 		self.assertContains(
 			response,
-			'<button class="header-cta" type="button">Report an item</button>',
+			f'<a class="header-cta" href="{reverse("found_report")}">Report an item</a>',
 			html=True,
 		)
 		self.assertContains(response, 'body.theme-light .submit-button { background: #003e3a; }')
@@ -106,14 +106,13 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, 'Access your dashboard')
 		self.assertContains(response, 'Campus username')
 		self.assertContains(response, 'Log in securely')
-		self.assertContains(response, f'href="{reverse("found_report")}">Report found</a>')
 		self.assertContains(response, 'name="csrfmiddlewaretoken"')
 		self.assertContains(response, 'data-theme-toggle')
 		self.assertContains(response, 'localStorage.setItem(storageKey, theme)')
 		self.assertContains(response, '--action-green: #003e3a;')
 		self.assertContains(
 			response,
-			'<button class="header-cta" type="button">Report an item</button>',
+			f'<a class="header-cta" href="{reverse("found_report")}">Report an item</a>',
 			html=True,
 		)
 
@@ -216,24 +215,29 @@ class AuthenticationTests(TestCase):
 		self.assertContains(response, 'Log in')
 		self.assertContains(
 			response,
-			f'href="{reverse("found_report")}">Report lost</a>',
+			f'<a class="header-cta" href="{reverse("found_report")}">Report an item</a>',
+			html=True,
 		)
+		self.assertNotContains(response, '>Report lost</a>')
+		self.assertNotContains(response, '>Report found</a>')
 		self.assertContains(response, 'Report an item')
 		self.assertContains(response, f'href="{reverse("found_report")}">I found something</a>')
 		self.assertContains(
 			response,
-			f'href="{reverse("login")}?next={reverse("user_dashboard")}">Open your dashboard',
+			f'<a class="dashboard-action" href="{reverse("user_dashboard")}">Open your dashboard &nbsp;→</a>',
+			html=True,
 		)
 		self.assertContains(response, 'data-theme-toggle')
 
-	def test_report_lost_navigation_does_not_log_out_authenticated_users(self):
+	def test_report_item_navigation_does_not_log_out_authenticated_users(self):
 		user = self.create_user()
 		self.client.force_login(user)
 
 		home_response = self.client.get(reverse('home'))
 		self.assertContains(
 			home_response,
-			f'href="{reverse("found_report")}">Report lost</a>',
+			f'<a class="header-cta" href="{reverse("found_report")}">Report an item</a>',
+			html=True,
 		)
 
 		report_response = self.client.get(reverse('found_report'))
@@ -271,6 +275,7 @@ class AuthenticationTests(TestCase):
 	def test_homepage_dashboard_cards_match_in_light_mode(self):
 		response = self.client.get(reverse('home'))
 
+		self.assertContains(response, 'font-weight: 750; text-align: left; cursor: pointer;')
 		self.assertContains(response, 'body.theme-light .dashboard-card:not(.secondary) {')
 		self.assertContains(response, 'border: 1px solid #cfe7e1; background: #eaf7f4; color: #163d38;')
 		self.assertContains(response, 'body.theme-light .dashboard-card:not(.secondary) p { color: #596b67; }')
@@ -371,6 +376,13 @@ class FoundItemReportTests(TestCase):
 			time_found=time(14, 35),
 		)
 
+	def grant_item_admin_permissions(self, user, *codenames):
+		permissions = Permission.objects.filter(
+			content_type__app_label='myapp',
+			codename__in=codenames,
+		)
+		user.user_permissions.add(*permissions)
+
 	def test_found_item_report_requires_login(self):
 		response = self.client.get(reverse('found_report'))
 
@@ -396,11 +408,8 @@ class FoundItemReportTests(TestCase):
 		)
 		self.assertContains(
 			response,
-			f'href="{reverse("found_report")}">Report found</a>',
-		)
-		self.assertContains(
-			response,
-			f'href="{reverse("found_report")}">Report an item</a>',
+			f'<a class="header-cta" href="{reverse("found_report")}">Report an item</a>',
+			html=True,
 		)
 		self.assertNotContains(response, '__FOUND_REPORT_URL__')
 		self.assertContains(response, '<select name="location"', html=False)
@@ -609,6 +618,8 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'Request information privately')
 		self.assertContains(response, 'name="message"')
 		self.assertContains(response, 'Send private request')
+		self.assertContains(response, 'name="submission_id"')
+		self.assertContains(response, 'button.disabled=true;')
 		self.assertNotContains(response, reporter.email)
 
 		self.client.force_login(reporter)
@@ -657,6 +668,39 @@ class FoundItemReportTests(TestCase):
 		self.client.force_login(requester)
 		requester_dashboard = self.client.get(reverse('user_dashboard'))
 		self.assertNotContains(requester_dashboard, inquiry.message)
+
+	def test_repeated_private_request_submission_creates_only_one_message(self):
+		reporter = self.create_user()
+		requester = User.objects.create_user(
+			username='item-owner',
+			email='item-owner@example.com',
+			password=self.password,
+		)
+		item = self.create_found_item(reporter, 'Silver watch')
+		request_url = reverse('request_found_item_information', args=(item.pk,))
+		payload = {
+			'message': 'Could you tell me where you found this watch?',
+			'submission_id': 'same-form-submission',
+		}
+		self.client.force_login(requester)
+
+		first_response = self.client.post(request_url, payload)
+		retry_response = self.client.post(request_url, payload)
+
+		self.assertRedirects(
+			first_response,
+			reverse('found_item_detail', args=(item.pk,)),
+			fetch_redirect_response=False,
+		)
+		self.assertRedirects(
+			retry_response,
+			reverse('found_item_detail', args=(item.pk,)),
+			fetch_redirect_response=False,
+		)
+		self.assertEqual(
+			FoundItemInquiry.objects.filter(item=item, requester=requester).count(),
+			1,
+		)
 
 	def test_reporter_cannot_request_information_about_their_own_item(self):
 		reporter = self.create_user()
@@ -712,6 +756,7 @@ class FoundItemReportTests(TestCase):
 		response = self.client.get(reverse('user_dashboard'))
 
 		self.assertContains(response, 'Your reports')
+		self.assertNotContains(response, 'class="admin-indicator"')
 		self.assertContains(response, 'My blue umbrella')
 		self.assertNotContains(response, "Someone else's keys")
 		self.assertContains(
@@ -760,6 +805,63 @@ class FoundItemReportTests(TestCase):
 		self.assertEqual(item.category, 'Keys')
 		self.assertEqual(item.location, 'Greenley Library')
 
+	def test_item_admin_can_edit_any_report(self):
+		admin_user = self.create_user()
+		admin_user.is_staff = True
+		admin_user.save()
+		item_owner = User.objects.create_user(
+			username='report-owner',
+			email='report-owner@example.com',
+			password=self.password,
+		)
+		item = self.create_found_item(item_owner, 'Original item')
+		self.grant_item_admin_permissions(admin_user, 'change_founditem')
+		self.client.force_login(admin_user)
+
+		response = self.client.post(
+			reverse('edit_found_item', args=(item.pk,)),
+			{
+				'item_name': 'Admin-updated item',
+				'description': 'Updated by an item administrator.',
+				'category': 'Keys',
+				'location': 'Greenley Library',
+				'date_found': '2026-11-11',
+				'time_found': '15:45',
+			},
+		)
+
+		self.assertRedirects(
+			response,
+			reverse('user_dashboard'),
+			fetch_redirect_response=False,
+		)
+		item.refresh_from_db()
+		self.assertEqual(item.item_name, 'Admin-updated item')
+		self.assertEqual(item.reporter, item_owner)
+		dashboard_response = self.client.get(reverse('user_dashboard'))
+		self.assertContains(dashboard_response, 'Report administration')
+		self.assertContains(dashboard_response, 'All campus reports')
+		self.assertContains(
+			dashboard_response,
+			'class="admin-indicator" role="img" aria-label="Administrator"',
+			html=False,
+		)
+		self.assertContains(dashboard_response, 'Admin-updated item')
+		self.assertContains(dashboard_response, 'Reported by report-owner')
+		self.assertContains(
+			dashboard_response,
+			f'href="{reverse("edit_found_item", args=(item.pk,))}">Edit</a>',
+		)
+		self.assertNotContains(
+			dashboard_response,
+			reverse('delete_found_item', args=(item.pk,)),
+			html=False,
+		)
+		self.assertEqual(
+			self.client.get(reverse('admin:myapp_founditem_changelist')).status_code,
+			200,
+		)
+
 	def test_users_cannot_edit_or_delete_another_users_report(self):
 		user = self.create_user()
 		other_user = User.objects.create_user(
@@ -789,6 +891,41 @@ class FoundItemReportTests(TestCase):
 		other_item.refresh_from_db()
 		self.assertEqual(other_item.reporter, other_user)
 		self.assertEqual(other_item.item_name, 'Private report')
+
+	def test_item_admin_can_delete_any_report(self):
+		admin_user = self.create_user()
+		admin_user.is_staff = True
+		admin_user.save()
+		item_owner = User.objects.create_user(
+			username='report-owner',
+			email='report-owner@example.com',
+			password=self.password,
+		)
+		item = self.create_found_item(item_owner, 'Admin-managed report')
+		self.grant_item_admin_permissions(
+			admin_user,
+			'change_founditem',
+			'delete_founditem',
+		)
+		self.client.force_login(admin_user)
+		dashboard_response = self.client.get(reverse('user_dashboard'))
+		self.assertContains(dashboard_response, 'Admin-managed report')
+		self.assertContains(
+			dashboard_response,
+			f'action="{reverse("delete_found_item", args=(item.pk,))}"',
+			html=False,
+		)
+
+		response = self.client.post(
+			reverse('delete_found_item', args=(item.pk,)),
+		)
+
+		self.assertRedirects(
+			response,
+			reverse('user_dashboard'),
+			fetch_redirect_response=False,
+		)
+		self.assertFalse(FoundItem.objects.filter(pk=item.pk).exists())
 
 	def test_user_can_delete_only_with_post(self):
 		user = self.create_user()

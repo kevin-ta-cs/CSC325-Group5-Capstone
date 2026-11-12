@@ -62,15 +62,34 @@ def user_dashboard(request):
             messages.success(request, 'Your username was updated.')
             return redirect('user_dashboard')
 
-    found_items = list(request.user.found_items.order_by(
+    can_manage_reports = (
+        request.user.has_perm('myapp.change_founditem')
+        or request.user.has_perm('myapp.delete_founditem')
+    )
+    own_items = list(request.user.found_items.order_by(
         '-date_found',
         '-time_found',
         '-created_at',
     ))
+    found_items = list(
+        FoundItem.objects.all().order_by(
+            '-date_found',
+            '-time_found',
+            '-created_at',
+        )
+    ) if can_manage_reports else own_items
     inquiries = FoundItemInquiry.objects.filter(
-        item_id__in=[item.pk for item in found_items],
+        item_id__in=[item.pk for item in own_items],
     ).order_by('-created_at')
-    return HttpResponse(user_dashboard_page(request, form, found_items, inquiries))
+    return HttpResponse(
+        user_dashboard_page(
+            request,
+            form,
+            found_items,
+            inquiries,
+            can_manage_reports=can_manage_reports,
+        )
+    )
 
 
 @login_required(login_url='login')
@@ -130,12 +149,25 @@ def request_found_item_information(request, item_id):
         messages.error(request, 'You cannot request information about your own report.')
         return redirect('found_item_detail', item_id=found_item.pk)
 
+    submission_id = request.POST.get('submission_id', '')
+    processed_submissions = request.session.get(
+        'private_request_submission_ids',
+        [],
+    )
+    submission_key = f'{found_item.pk}:{submission_id}'
+    if submission_id and submission_key in processed_submissions:
+        return redirect('found_item_detail', item_id=found_item.pk)
+
     form = FoundItemInquiryForm(request.POST)
     if form.is_valid():
         inquiry = form.save(commit=False)
         inquiry.item = found_item
         inquiry.requester = request.user
         inquiry.save()
+        if submission_id:
+            request.session['private_request_submission_ids'] = (
+                processed_submissions + [submission_key]
+            )[-50:]
         messages.success(request, 'Your private request was sent to the reporter.')
         return redirect('found_item_detail', item_id=found_item.pk)
 
@@ -151,11 +183,14 @@ def request_found_item_information(request, item_id):
 
 @login_required(login_url='login')
 def edit_found_item(request, item_id):
-    found_item = get_object_or_404(
-        FoundItem,
-        pk=item_id,
-        reporter=request.user,
-    )
+    if request.user.has_perm('myapp.change_founditem'):
+        found_item = get_object_or_404(FoundItem, pk=item_id)
+    else:
+        found_item = get_object_or_404(
+            FoundItem,
+            pk=item_id,
+            reporter=request.user,
+        )
     form = FoundItemForm(
         request.POST if request.method == 'POST' else None,
         instance=found_item,
@@ -171,7 +206,10 @@ def edit_found_item(request, item_id):
 @login_required(login_url='login')
 @require_POST
 def delete_found_item(request, item_id):
-    found_item = get_object_or_404(FoundItem, pk=item_id, reporter=request.user)
+    if request.user.has_perm('myapp.delete_founditem'):
+        found_item = get_object_or_404(FoundItem, pk=item_id)
+    else:
+        found_item = get_object_or_404(FoundItem, pk=item_id, reporter=request.user)
     found_item.delete()
     messages.success(request, 'Your found item report was deleted.')
     return redirect('user_dashboard')

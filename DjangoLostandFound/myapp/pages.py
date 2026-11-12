@@ -1,6 +1,7 @@
 import random
 import re
 from datetime import date
+from uuid import uuid4
 
 from django.contrib.messages import get_messages
 from django.middleware.csrf import get_token
@@ -147,8 +148,8 @@ HOME_PAGE = """<!doctype html>
       color: #fff;
       backdrop-filter: blur(14px);
     }
-    .header-inner { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px; }
-    .brand { display: inline-flex; align-items: center; gap: 10px; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .header-inner { display: grid; min-height: 64px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; justify-self: start; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
     .brand-mark {
       position: relative; display: grid; width: 36px; height: 36px; place-items: center;
       border-radius: 12px; background: #075d56; color: #fff; font-size: 0;
@@ -162,6 +163,8 @@ HOME_PAGE = """<!doctype html>
       border-radius: 2px; background: currentColor; content: "";
     }
     .primary-nav, .header-actions { display: flex; align-items: center; gap: 24px; }
+    .primary-nav { justify-self: center; }
+    .header-actions { justify-self: end; }
     .primary-nav a, .header-actions a { color: #f7f7f7; font-size: 0.9rem; font-weight: 600; text-decoration: none; }
     .primary-nav a:hover, .header-actions a:hover { color: var(--teal-bright); }
     .header-actions form { margin: 0; }
@@ -378,7 +381,7 @@ HOME_PAGE = """<!doctype html>
       color: #8ce8d8; font-weight: 750; text-decoration: none;
     }
     .dashboard-card .dashboard-action {
-      padding: 0; border: 0; background: none; font: inherit; text-align: left; cursor: not-allowed;
+      padding: 0; border: 0; background: none; font: inherit; font-weight: 750; text-align: left; cursor: pointer;
     }
     .dashboard-card.secondary a, .dashboard-card.secondary .dashboard-action { color: #087c70; }
     body.theme-light .dashboard-card:not(.secondary) {
@@ -419,6 +422,10 @@ HOME_PAGE = """<!doctype html>
     body.theme-dark .dashboard-card.secondary p { color: #b3c0bd; }
     body.theme-dark .dashboard-card.secondary a,
     body.theme-dark .dashboard-card.secondary .dashboard-action { color: #8ce8d8; }
+    @media (max-width: 1120px) {
+      .header-inner { display: flex; flex-wrap: wrap; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; }
+    }
     @media (max-width: 1000px) {
       .primary-nav { gap: 14px; }
       .header-inner { gap: 14px; }
@@ -433,7 +440,7 @@ HOME_PAGE = """<!doctype html>
     @media (max-width: 700px) {
       .wrap, .section-inner { width: min(100% - 36px, 560px); }
       .header-inner { flex-wrap: wrap; padding-block: 10px; }
-      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; gap: 10px; }
       .primary-nav a { font-size: .78rem; }
       .header-actions { gap: 12px; }
       .header-actions .header-cta { padding: 8px 12px; font-size: .78rem; }
@@ -452,7 +459,7 @@ HOME_PAGE = """<!doctype html>
       .footer-about { grid-column: 1 / -1; }
     }
     @media (max-width: 390px) {
-      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .primary-nav { flex-wrap: wrap; justify-content: center; column-gap: 14px; }
       .header-actions a:not(.header-cta) { font-size: .8rem; }
       .pill-button { width: 100%; }
       .filters { grid-template-columns: 1fr; }
@@ -471,8 +478,6 @@ HOME_PAGE = """<!doctype html>
       <a class="brand" href="/" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="#how-it-works">How it works</a>
-        <a href="__FOUND_REPORT_URL__">Report lost</a>
-        <a href="__FOUND_REPORT_URL__">Report found</a>
         <a href="__BROWSE_ITEMS_URL__">Browse items</a>
       </nav>
       <div class="header-actions">
@@ -557,7 +562,7 @@ HOME_PAGE = """<!doctype html>
             <p class="eyebrow">For students and staff</p>
             <h2>One dashboard for every report.</h2>
             <p>Edit or delete reports, track status, monitor claims, and see new smart matches as the catalog grows.</p>
-            <a class="dashboard-action" href="__DASHBOARD_URL__">Open your dashboard &nbsp;→</a>
+            <a class="dashboard-action" href="__USER_DASHBOARD_URL__">Open your dashboard &nbsp;→</a>
           </article>
           <article class="dashboard-card secondary">
             <p class="eyebrow">For campus teams</p>
@@ -799,12 +804,14 @@ BROWSE_ITEMS_PAGE = """<!doctype html>
     button, input, select { font: inherit; }
     .wrap { width: min(1280px, calc(100% - 64px)); margin-inline: auto; }
     .site-header { position: sticky; z-index: 10; top: 0; border-bottom: 1px solid rgba(255,255,255,.1); background: rgba(9,10,11,.96); color: #fff; backdrop-filter: blur(14px); }
-    .header-inner { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px; }
-    .brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .header-inner { display: grid; min-height: 64px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; justify-self: start; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
     .brand-mark { position: relative; display: grid; width: 36px; height: 36px; place-items: center; border-radius: 12px; background: #075d56; }
     .brand-mark::before { width: 13px; height: 13px; transform: translate(-2px,-2px); border: 2.5px solid #fff; border-radius: 50%; content: ""; }
     .brand-mark::after { position: absolute; width: 7px; height: 2.5px; transform: translate(5px,5px) rotate(45deg); border-radius: 2px; background: #fff; content: ""; }
     .primary-nav, .header-actions { display: flex; align-items: center; gap: 24px; }
+    .primary-nav { justify-self: center; }
+    .header-actions { justify-self: end; }
     .primary-nav a, .header-actions a { color: #f7f7f7; font-size: .9rem; font-weight: 600; text-decoration: none; }
     .primary-nav a:hover, .header-actions a:hover { color: var(--teal-bright); }
     .header-actions form { margin: 0; }
@@ -884,6 +891,10 @@ BROWSE_ITEMS_PAGE = """<!doctype html>
     .footer-column a { display: block; margin: 7px 0; color: #b6c0be; font-size: .85rem; text-decoration: none; }
     .footer-column a:hover { color: #8ce8d8; }
     .copyright { padding: 16px 0 22px; border-top: 1px solid #252a2a; color: #9ba5a3; font-size: .78rem; text-align: center; }
+    @media (max-width: 1120px) {
+      .header-inner { display: flex; flex-wrap: wrap; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; }
+    }
     @media (max-width: 1000px) { .report-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
     @media (max-width: 860px) {
       .filters { grid-template-columns: repeat(2, minmax(0,1fr)); }
@@ -893,7 +904,7 @@ BROWSE_ITEMS_PAGE = """<!doctype html>
     @media (max-width: 700px) {
       .wrap, main { width: min(100% - 36px, 560px); }
       .header-inner { flex-wrap: wrap; padding-block: 10px; }
-      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; gap: 10px; }
       .primary-nav a { font-size: .78rem; }
       .header-actions { gap: 12px; }
       .header-actions .header-cta { padding: 8px 12px; font-size: .78rem; }
@@ -903,7 +914,7 @@ BROWSE_ITEMS_PAGE = """<!doctype html>
       .footer-about { grid-column: 1 / -1; }
     }
     @media (max-width: 390px) {
-      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .primary-nav { flex-wrap: wrap; justify-content: center; column-gap: 14px; }
       .header-actions a:not(.header-cta) { font-size: .8rem; }
       .filters { grid-template-columns: 1fr; }
       .search-field { grid-column: auto; }
@@ -918,8 +929,6 @@ BROWSE_ITEMS_PAGE = """<!doctype html>
       <a class="brand" href="__HOME_URL__" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="__HOME_URL__#how-it-works">How it works</a>
-        <a href="__REPORT_URL__">Report lost</a>
-        <a href="__FOUND_REPORT_URL__">Report found</a>
         <a href="__BROWSE_ITEMS_URL__" aria-current="page">Browse items</a>
       </nav>
       <div class="header-actions">
@@ -991,6 +1000,7 @@ def home_page(request):
         ("__ACCOUNT_LINK__", str(account_link)),
         ("__ACCOUNT_URL__", account_url),
         ("__DASHBOARD_URL__", dashboard_url),
+        ("__USER_DASHBOARD_URL__", reverse("user_dashboard")),
         ("__REPORT_URL__", reverse("found_report")),
         ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__BROWSE_ITEMS_URL__", reverse("browse_items")),
@@ -1056,9 +1066,9 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
     .site-header { background: #090a0b; color: #fff; }
     .wrap { width: min(1280px, calc(100% - 64px)); margin-inline: auto; }
     .header-inner {
-      display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px;
+      display: grid; min-height: 64px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 24px;
     }
-    .brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; justify-self: start; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
     .brand-mark {
       position: relative; display: grid; width: 36px; height: 36px; place-items: center;
       border-radius: 12px; background: #075d56; color: #fff; font-size: 0;
@@ -1066,6 +1076,8 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
     .brand-mark::before { width: 13px; height: 13px; transform: translate(-2px, -2px); border: 2.5px solid currentColor; border-radius: 50%; content: ""; }
     .brand-mark::after { position: absolute; width: 7px; height: 2.5px; transform: translate(5px, 5px) rotate(45deg); border-radius: 2px; background: currentColor; content: ""; }
     .primary-nav, .header-actions { display: flex; align-items: center; gap: 20px; }
+    .primary-nav { justify-self: center; }
+    .header-actions { justify-self: end; }
     .primary-nav a, .header-actions a { color: #fff; font-weight: 650; text-decoration: none; }
     .primary-nav a:hover, .header-actions a:hover { color: #8ce8d8; }
     .header-actions .header-cta { padding: 9px 18px; border-radius: 999px; background: #fff; color: #064d47; }
@@ -1134,6 +1146,10 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
     .footer-column a { display: block; margin: 7px 0; color: #b6c0be; font-size: .85rem; text-decoration: none; }
     .footer-column a:hover { color: #8ce8d8; }
     .copyright { padding: 16px 0 22px; border-top: 1px solid #252a2a; color: #9ba5a3; font-size: .78rem; text-align: center; }
+    @media (max-width: 1120px) {
+      .header-inner { display: flex; flex-wrap: wrap; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; }
+    }
     @media (max-width: 900px) {
       .detail-grid { grid-template-columns: 1fr; }
       .item-image { min-height: 300px; }
@@ -1144,7 +1160,7 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
     @media (max-width: 650px) {
       .wrap, main { width: calc(100% - 36px); }
       .header-inner { flex-wrap: wrap; padding-block: 10px; }
-      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 8px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; gap: 8px; }
       .primary-nav a, .header-actions a { font-size: .76rem; }
       .header-actions { flex-wrap: wrap; gap: 12px; }
       main { margin-top: 22px; }
@@ -1155,7 +1171,7 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
       .footer-about { grid-column: 1 / -1; }
     }
     @media (max-width: 390px) {
-      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .primary-nav { flex-wrap: wrap; justify-content: center; column-gap: 14px; }
       .header-actions a:not(.header-cta) { font-size: .8rem; }
       .footer-inner { grid-template-columns: 1fr; }
       .footer-about { grid-column: auto; }
@@ -1168,8 +1184,6 @@ FOUND_ITEM_DETAIL_PAGE = """<!doctype html>
       <a class="brand" href="__HOME_URL__" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="__HOME_URL__#how-it-works">How it works</a>
-        <a href="__LOST_REPORT_URL__">Report lost</a>
-        <a href="__FOUND_REPORT_URL__">Report found</a>
         <a href="__BROWSE_ITEMS_URL__">Browse items</a>
       </nav>
       <nav class="header-actions" aria-label="Primary navigation">
@@ -1250,12 +1264,17 @@ def found_item_detail_page(request, item, form, request_status):
             else ""
         )
         request_content = format_html(
-            '<form class="inquiry-form" action="{}" method="post">{}'
+            '<form class="inquiry-form" action="{}" method="post" '
+            'onsubmit="const button=this.querySelector(\'.submit-request\');'
+            'if(button.disabled)return false;button.disabled=true;'
+            'button.textContent=\'Sending...\';">{}'
+            '<input type="hidden" name="submission_id" value="{}">'
             '<label for="{}">Your message</label>{}{}'
             '<button class="submit-request" type="submit">Send private request</button>'
             '<p class="request-private-note">Only the item reporter can read your request.</p></form>',
             reverse("request_found_item_information", args=(item.pk,)),
             csrf_input(request),
+            uuid4().hex,
             message.id_for_label,
             message.as_widget(
                 attrs={
@@ -1395,9 +1414,9 @@ FOUND_ITEM_PAGE = """<!doctype html>
     .wrap { width: min(1280px, calc(100% - 64px)); margin-inline: auto; }
     .site-header { position: sticky; z-index: 10; top: 0; background: #090a0b; color: #fff; }
     .header-inner {
-      display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px;
+      display: grid; min-height: 64px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 24px;
     }
-    .brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; justify-self: start; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
     .brand-mark {
       position: relative; display: grid; width: 36px; height: 36px; place-items: center;
       border-radius: 12px; background: #075d56; color: #fff; font-size: 0;
@@ -1405,6 +1424,8 @@ FOUND_ITEM_PAGE = """<!doctype html>
     .brand-mark::before { width: 13px; height: 13px; transform: translate(-2px, -2px); border: 2.5px solid currentColor; border-radius: 50%; content: ""; }
     .brand-mark::after { position: absolute; width: 7px; height: 2.5px; transform: translate(5px, 5px) rotate(45deg); border-radius: 2px; background: currentColor; content: ""; }
     .primary-nav, .header-actions { display: flex; align-items: center; gap: 22px; }
+    .primary-nav { justify-self: center; }
+    .header-actions { justify-self: end; }
     .primary-nav a, .header-actions a { color: #f7f7f7; font-size: .9rem; font-weight: 650; text-decoration: none; }
     .primary-nav a:hover, .header-actions a:hover { color: var(--teal-bright); }
     .header-actions form { margin: 0; }
@@ -1462,6 +1483,10 @@ FOUND_ITEM_PAGE = """<!doctype html>
     .footer-column a { display: block; margin: 7px 0; color: #b6c0be; font-size: .85rem; text-decoration: none; }
     .footer-column a:hover { color: #8ce8d8; }
     .copyright { padding: 16px 0 22px; border-top: 1px solid #252a2a; color: #9ba5a3; font-size: .78rem; text-align: center; }
+    @media (max-width: 1120px) {
+      .header-inner { display: flex; flex-wrap: wrap; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; }
+    }
     @media (max-width: 900px) {
       .report-layout { grid-template-columns: 1fr; gap: 32px; }
       .report-copy { max-width: 720px; }
@@ -1473,7 +1498,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
     @media (max-width: 650px) {
       .wrap, main { width: calc(100% - 36px); }
       .header-inner { flex-wrap: wrap; gap: 10px; padding-block: 10px; }
-      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 8px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; gap: 8px; }
       .primary-nav a, .header-actions a { font-size: .78rem; }
       .header-actions { gap: 12px; }
       .header-actions .header-cta { padding: 8px 11px; }
@@ -1487,7 +1512,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
       .form-field.full, .submit-button, .form-footer, .error-summary { grid-column: auto; }
     }
     @media (max-width: 390px) {
-      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .primary-nav { flex-wrap: wrap; justify-content: center; column-gap: 14px; }
       .header-actions a:not(.header-cta) { font-size: .8rem; }
       .footer-inner { grid-template-columns: 1fr; }
       .footer-about { grid-column: auto; }
@@ -1500,8 +1525,6 @@ FOUND_ITEM_PAGE = """<!doctype html>
       <a class="brand" href="__HOME_URL__" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="__HOME_URL__#how-it-works">How it works</a>
-        <a href="__LOST_REPORT_URL__">Report lost</a>
-        <a href="__FOUND_REPORT_URL__">Report found</a>
         <a href="__BROWSE_ITEMS_URL__">Browse items</a>
       </nav>
       <nav class="header-actions" aria-label="Account navigation">
@@ -1653,7 +1676,7 @@ def found_item_page(request, form, editing=False):
     return page
 
 
-def _reported_item_card(request, item):
+def _reported_item_card(request, item, show_reporter=False):
     description = (
         format_html(
             '<p class="owned-report-description">{}</p>',
@@ -1662,36 +1685,69 @@ def _reported_item_card(request, item):
         if item.description
         else ""
     )
+    reporter = (
+        format_html(' · Reported by {}', item.reporter.get_username())
+        if show_reporter
+        else ""
+    )
+    actions = format_html(
+        '<div class="report-actions">{}{}</div>',
+        (
+            format_html(
+                '<a href="{}">Edit</a>',
+                reverse("edit_found_item", args=(item.pk,)),
+            )
+            if item.reporter_id == request.user.pk
+            or request.user.has_perm("myapp.change_founditem")
+            else ""
+        ),
+        (
+            format_html(
+                '<form action="{}" method="post" '
+                'onsubmit="return confirm(\'Delete this found-item report?\')">{}'
+                '<button class="delete-button" type="submit">Delete</button></form>',
+                reverse("delete_found_item", args=(item.pk,)),
+                csrf_input(request),
+            )
+            if item.reporter_id == request.user.pk
+            or request.user.has_perm("myapp.delete_founditem")
+            else ""
+        ),
+    )
     return format_html(
         '<article class="owned-report"><div class="owned-report-content">'
-        '<h3>{}</h3><p class="owned-report-meta">{} · {} · {} at {}</p>{}'
-        '</div><div class="report-actions"><a href="{}">Edit</a>'
-        '<form action="{}" method="post" '
-        'onsubmit="return confirm(\'Delete this found-item report?\')">{}'
-        '<button class="delete-button" type="submit">Delete</button></form></div></article>',
+        '<h3>{}</h3><p class="owned-report-meta">{} · {} · {} at {}{}</p>{}'
+        '</div>{}</article>',
         item.item_name,
         item.category,
         item.location,
         date_format(item.date_found, "M j, Y"),
         item.time_found.strftime("%I:%M %p").lstrip("0"),
+        reporter,
         description,
-        reverse("edit_found_item", args=(item.pk,)),
-        reverse("delete_found_item", args=(item.pk,)),
-        csrf_input(request),
+        actions,
     )
 
 
-def _reported_items_markup(request, found_items):
+def _reported_items_markup(request, found_items, show_reporter=False):
     if not found_items:
+        empty_message = (
+            "There are no campus reports yet."
+            if show_reporter
+            else "You have not published a report yet."
+        )
         return format_html(
-            '<p class="empty-reports">You have not published a report yet. '
-            '<a href="{}">Report a found item</a>.</p>',
+            '<p class="empty-reports">{} <a href="{}">Report a found item</a>.</p>',
+            empty_message,
             reverse("found_report"),
         )
     return format_html_join(
         "",
         "{}",
-        ((_reported_item_card(request, item),) for item in found_items),
+        (
+            (_reported_item_card(request, item, show_reporter=show_reporter),)
+            for item in found_items
+        ),
     )
 
 
@@ -1786,9 +1842,9 @@ USER_DASHBOARD_PAGE = """<!doctype html>
     .wrap { width: min(1280px, calc(100% - 64px)); margin-inline: auto; }
     .site-header { position: sticky; z-index: 10; top: 0; background: #090a0b; color: #fff; }
     .header-inner {
-      display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px;
+      display: grid; min-height: 64px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 24px;
     }
-    .brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; justify-self: start; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
     .brand-mark {
       position: relative; display: grid; width: 36px; height: 36px; place-items: center;
       border-radius: 12px; background: #075d56; color: #fff; font-size: 0;
@@ -1796,6 +1852,8 @@ USER_DASHBOARD_PAGE = """<!doctype html>
     .brand-mark::before { width: 13px; height: 13px; transform: translate(-2px, -2px); border: 2.5px solid currentColor; border-radius: 50%; content: ""; }
     .brand-mark::after { position: absolute; width: 7px; height: 2.5px; transform: translate(5px, 5px) rotate(45deg); border-radius: 2px; background: currentColor; content: ""; }
     .primary-nav, .header-actions { display: flex; align-items: center; gap: 22px; }
+    .primary-nav { justify-self: center; }
+    .header-actions { justify-self: end; }
     .primary-nav a, .header-actions a { color: #f7f7f7; font-size: .9rem; font-weight: 650; text-decoration: none; }
     .primary-nav a:hover, .header-actions a:hover { color: #8ce8d8; }
     .header-actions form { margin: 0; }
@@ -1808,6 +1866,8 @@ USER_DASHBOARD_PAGE = """<!doctype html>
     .dashboard-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
     .eyebrow { margin: 0 0 5px; color: var(--teal-bright); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
     h1 { margin: 0; font-size: clamp(2.2rem, 4vw, 3rem); letter-spacing: -.04em; line-height: 1.12; }
+    .admin-indicator { display: inline-flex; width: .82em; height: .82em; margin-left: .16em; color: var(--teal-bright); vertical-align: .02em; }
+    .admin-indicator svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
     .intro { margin: 8px 0 0; color: rgba(255,255,255,.82); }
     body.theme-light .intro { color: rgba(20,59,55,.78); }
     .new-report {
@@ -1906,10 +1966,14 @@ USER_DASHBOARD_PAGE = """<!doctype html>
     .header-actions button:focus-visible, .brand:focus-visible {
       outline: 3px solid #8ce8d8; outline-offset: 3px;
     }
+    @media (max-width: 1120px) {
+      .header-inner { display: flex; flex-wrap: wrap; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; }
+    }
     @media (max-width: 560px) {
       .wrap, main { width: calc(100% - 36px); }
       .header-inner { flex-wrap: wrap; gap: 10px; padding-block: 10px; }
-      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 8px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; gap: 8px; }
       .primary-nav a, .header-actions a { font-size: .76rem; }
       .header-actions { flex-wrap: wrap; gap: 12px; }
       .dashboard-heading { align-items: flex-start; flex-direction: column; }
@@ -1922,7 +1986,7 @@ USER_DASHBOARD_PAGE = """<!doctype html>
       .footer-about { grid-column: 1 / -1; }
     }
     @media (max-width: 390px) {
-      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .primary-nav { flex-wrap: wrap; justify-content: center; column-gap: 14px; }
       .header-actions a:not(.header-cta) { font-size: .8rem; }
       .footer-inner { grid-template-columns: 1fr; }
       .footer-about { grid-column: auto; }
@@ -1935,8 +1999,6 @@ USER_DASHBOARD_PAGE = """<!doctype html>
       <a class="brand" href="__HOME_URL__" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="__HOME_URL__#how-it-works">How it works</a>
-        <a href="__LOST_REPORT_URL__">Report lost</a>
-        <a href="__FOUND_REPORT_URL__">Report found</a>
         <a href="__BROWSE_ITEMS_URL__">Browse items</a>
       </nav>
       <nav class="header-actions" aria-label="Account navigation">
@@ -1953,22 +2015,22 @@ USER_DASHBOARD_PAGE = """<!doctype html>
   <main>
     <div class="dashboard-heading">
       <div>
-        <p class="eyebrow">Member dashboard</p>
-        <h1>Welcome back, __USERNAME__.</h1>
-        <p class="intro">Manage reports, monitor claims, and review smart matches.</p>
+        <p class="eyebrow">__DASHBOARD_ROLE__</p>
+        <h1>Welcome back, __USERNAME____ADMIN_ICON__.</h1>
+        <p class="intro">__DASHBOARD_INTRO__</p>
       </div>
       <a class="new-report" href="__FOUND_REPORT_URL__">＋ &nbsp; New report</a>
     </div>
     __NOTICES__
     <section class="dashboard-stats" aria-label="Account activity summary">
-      <article class="stat-card"><span class="stat-icon" aria-hidden="true">◈</span><strong>__REPORT_COUNT__</strong><span class="stat-label">Your reports</span></article>
+      <article class="stat-card"><span class="stat-icon" aria-hidden="true">◈</span><strong>__REPORT_COUNT__</strong><span class="stat-label">__REPORT_STAT_LABEL__</span></article>
       <article class="stat-card"><span class="stat-icon" aria-hidden="true">✣</span><strong>0</strong><span class="stat-label">Smart matches</span></article>
       <article class="stat-card"><span class="stat-icon" aria-hidden="true">◇</span><strong>0</strong><span class="stat-label">Claims tracked</span></article>
     </section>
     <section class="dashboard-card reported-items" aria-labelledby="reports-heading">
-      <p class="section-eyebrow">Item status tracking</p>
+      <p class="section-eyebrow">__REPORTS_EYEBROW__</p>
       <div class="reports-heading-row">
-        <h2 id="reports-heading">Your reports</h2>
+        <h2 id="reports-heading">__REPORTS_HEADING__</h2>
         <a href="__FOUND_REPORT_URL__">Report another item</a>
       </div>
       <div class="report-list">__FOUND_ITEMS__</div>
@@ -2022,7 +2084,7 @@ USER_DASHBOARD_PAGE = """<!doctype html>
 </html>"""
 
 
-def user_dashboard_page(request, form, found_items, inquiries):
+def user_dashboard_page(request, form, found_items, inquiries, can_manage_reports=False):
     username = form.instance.get_username()
     email = form.instance.email or "Not provided"
     joined = date_format(form.instance.date_joined, "F j, Y")
@@ -2055,12 +2117,28 @@ def user_dashboard_page(request, form, found_items, inquiries):
         field_errors,
         field_help,
     )
+    admin_icon = (
+        format_html(
+            '<span class="admin-indicator" role="img" aria-label="{}" '
+            'title="{}"><svg viewBox="0 0 24 24" aria-hidden="true">'
+            '<path d="M12 2.5 4.5 5.4v5.3c0 4.8 3.2 9 7.5 10.8 4.3-1.8 7.5-6 7.5-10.8V5.4L12 2.5Z"/>'
+            '<path d="m8.7 11.9 2.2 2.2 4.5-4.5"/></svg></span>',
+            "Administrator",
+            "Administrator",
+        )
+        if can_manage_reports
+        else ""
+    )
     notices = format_html_join(
         "",
         '<p class="notice" role="status">{}</p>',
         ((message,) for message in get_messages(request)),
     )
-    reported_items = _reported_items_markup(request, found_items)
+    reported_items = _reported_items_markup(
+        request,
+        found_items,
+        show_reporter=can_manage_reports,
+    )
     information_requests = _information_requests_markup(inquiries)
     page = USER_DASHBOARD_PAGE
     for placeholder, value in (
@@ -2071,11 +2149,25 @@ def user_dashboard_page(request, form, found_items, inquiries):
         ("__LOST_REPORT_URL__", reverse("found_report")),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__USERNAME__", format_html("{}", username)),
+        ("__ADMIN_ICON__", str(admin_icon)),
         ("__EMAIL__", format_html("{}", email)),
         ("__JOINED__", str(joined)),
         ("__USERNAME_FIELD__", str(username_field)),
         ("__FOUND_ITEMS__", str(reported_items)),
         ("__REPORT_COUNT__", str(len(found_items))),
+        (
+            "__DASHBOARD_ROLE__",
+            "Report administration" if can_manage_reports else "Member dashboard",
+        ),
+        (
+            "__DASHBOARD_INTRO__",
+            "Review and manage reports from across campus."
+            if can_manage_reports
+            else "Manage reports, monitor claims, and review smart matches.",
+        ),
+        ("__REPORT_STAT_LABEL__", "Campus reports" if can_manage_reports else "Your reports"),
+        ("__REPORTS_EYEBROW__", "Report management" if can_manage_reports else "Item status tracking"),
+        ("__REPORTS_HEADING__", "All campus reports" if can_manage_reports else "Your reports"),
         ("__INFORMATION_REQUESTS__", str(information_requests)),
         ("__YEAR__", str(date.today().year)),
         ("__NOTICES__", str(notices)),
@@ -2252,8 +2344,8 @@ LOGIN_PAGE = """<!doctype html>
       border-bottom: 1px solid rgba(255,255,255,.1); background: rgba(9,10,11,.96);
       color: #fff; backdrop-filter: blur(14px);
     }
-    .header-inner { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px; }
-    .brand { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+    .header-inner { display: grid; min-height: 64px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; justify-self: start; color: #fff; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
     .brand-mark {
       position: relative; display: grid; width: 36px; height: 36px; place-items: center;
       border-radius: 12px; background: #075d56; color: #fff;
@@ -2261,11 +2353,12 @@ LOGIN_PAGE = """<!doctype html>
     .brand-mark::before { width: 13px; height: 13px; transform: translate(-2px,-2px); border: 2.5px solid currentColor; border-radius: 50%; content: ""; }
     .brand-mark::after { position: absolute; width: 7px; height: 2.5px; transform: translate(5px,5px) rotate(45deg); border-radius: 2px; background: currentColor; content: ""; }
     .primary-nav, .header-actions { display: flex; align-items: center; gap: 24px; }
+    .primary-nav { justify-self: center; }
+    .header-actions { justify-self: end; }
     .primary-nav a, .header-actions a { color: #f7f7f7; font-size: .9rem; font-weight: 600; text-decoration: none; }
     .primary-nav a:hover, .header-actions a:hover { color: var(--teal-bright); }
     .theme-link { border: 0; background: transparent; color: #fff !important; font-size: 1.2rem !important; cursor: pointer; }
     .header-actions .header-cta { padding: 9px 18px; border-radius: 999px; background: #fff; color: var(--action-green); font-weight: 750; }
-    .header-actions button.header-cta { border: 0; font: inherit; font-size: .9rem; cursor: pointer; }
     body { background: #014d48; }
     body.theme-light { background: #e5f4f0; --teal: #e5f4f0; --teal-bright: #087c70; --action-green: #003e3a; }
     body.theme-light .submit-button { background: #003e3a; }
@@ -2360,6 +2453,10 @@ LOGIN_PAGE = """<!doctype html>
     .footer-column a { display: block; margin: 7px 0; color: #b6c0be; font-size: .85rem; text-decoration: none; }
     .footer-column a:hover { color: #8ce8d8; }
     .copyright { padding: 16px 0 22px; border-top: 1px solid #252a2a; color: #9ba5a3; font-size: .78rem; text-align: center; }
+    @media (max-width: 1120px) {
+      .header-inner { display: flex; flex-wrap: wrap; padding-block: 10px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; }
+    }
     @media (max-width: 850px) {
       .primary-nav, .header-actions { gap: 14px; }
       .auth-panel { grid-template-columns: .9fr 1.1fr; }
@@ -2368,7 +2465,7 @@ LOGIN_PAGE = """<!doctype html>
     @media (max-width: 650px) {
       .wrap { width: calc(100% - 36px); }
       .header-inner { flex-wrap: wrap; gap: 10px; padding-block: 10px; }
-      .primary-nav { order: 3; width: 100%; justify-content: space-between; gap: 8px; }
+      .primary-nav { order: 3; width: 100%; justify-content: center; gap: 8px; }
       .primary-nav a { font-size: .76rem; }
       .header-actions { gap: 12px; }
       .header-actions .header-cta { padding: 8px 11px; font-size: .76rem; }
@@ -2385,7 +2482,7 @@ LOGIN_PAGE = """<!doctype html>
       .footer-about { grid-column: 1 / -1; }
     }
     @media (max-width: 390px) {
-      .primary-nav { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; }
+      .primary-nav { flex-wrap: wrap; justify-content: center; column-gap: 14px; }
       .header-actions a:not(.header-cta) { font-size: .8rem; }
       .footer-inner { grid-template-columns: 1fr; }
       .footer-about { grid-column: auto; }
@@ -2398,14 +2495,12 @@ LOGIN_PAGE = """<!doctype html>
       <a class="brand" href="__HOME_URL__" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true"></span>FindIt</a>
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="__HOME_URL__#how-it-works">How it works</a>
-        <a href="__FOUND_REPORT_URL__">Report lost</a>
-        <a href="__FOUND_REPORT_URL__">Report found</a>
         <a href="__BROWSE_ITEMS_URL__">Browse items</a>
       </nav>
       <div class="header-actions">
         <button class="theme-link" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false">☀</button>
         <a href="__LOGIN_URL__">Log in</a>
-        <button class="header-cta" type="button">Report an item</button>
+        <a class="header-cta" href="__FOUND_REPORT_URL__">Report an item</a>
       </div>
     </div>
   </header>
