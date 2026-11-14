@@ -1,6 +1,10 @@
 asgiref==3.13.0
 Django==6.1.2
 django-mongodb-backend==6.1.0
-Pillow>=11.0
+dnspython==2.9.2
+gunicorn==27.0.1
+pillow==13.0.0
+pymongo==4.20.0
 python-dotenv==1.1.1
 sqlparse==0.6.0
+whitenoise==6.12.0
