@@ -162,7 +162,11 @@ python3 manage.py test myapp --noinput
 ```
 
 The tests require access to a working MongoDB instance.
+For repeated runs, add `--keepdb` to reuse the isolated test database:
 
+```bash
+python3 manage.py test myapp --noinput --keepdb
+```
 
 The Deploy stage does not currently publish the application to a live hosting service.
 

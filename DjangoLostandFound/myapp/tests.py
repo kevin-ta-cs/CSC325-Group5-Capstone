@@ -25,6 +25,7 @@ User = get_user_model()
 GeminiClient = genai.Client
 
 
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class GeminiMatchingTests(TestCase):
 	password = 'CampusFind!2026Strong'
 
@@ -185,6 +186,7 @@ class GeminiMatchingTests(TestCase):
 		gemini_client.assert_not_called()
 
 
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class AuthenticationTests(TestCase):
 	password = 'CampusFind!2026Strong'
 
@@ -545,6 +547,7 @@ class AuthenticationTests(TestCase):
 		)
 
 
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class FoundItemReportTests(TestCase):
 	password = 'CampusFind!2026Strong'
 
