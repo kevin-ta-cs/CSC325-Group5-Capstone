@@ -2,6 +2,7 @@ asgiref==3.13.0
 Django==6.1.2
 django-mongodb-backend==6.1.0
 dnspython==2.9.2
+django-storages[s3]==1.14.6
 gunicorn==27.0.1
 pillow==13.0.0
 pymongo==4.20.0
