@@ -1,6 +1,10 @@
 from io import BytesIO
+import json
+import os
 import tempfile
 from datetime import date, datetime, time, timezone
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from PIL import Image
 from django.contrib.auth import get_user_model
@@ -8,11 +12,177 @@ from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai.models import Models
 
+from .forms import FoundItemForm
+from .matching import MatchingError, find_possible_matches
 from .models import FoundItem, FoundItemInquiry
 from .pages import REPORTS
 
 User = get_user_model()
+GeminiClient = genai.Client
+
+
+class GeminiMatchingTests(TestCase):
+	password = 'CampusFind!2026Strong'
+
+	def create_user(self):
+		return User.objects.create_user(
+			username='matching-test-user',
+			email='matching-test-user@example.com',
+			password=self.password,
+		)
+
+	def create_item(self, reporter, *, report_type='found', item_name='Blue bottle'):
+		return FoundItem.objects.create(
+			reporter=reporter,
+			report_type=report_type,
+			item_name=item_name,
+			description='A bottle with a campus logo.',
+			color='Blue',
+			category='Accessories',
+			location='Campus Center',
+			date_found=date(2026, 11, 10),
+			time_found=time(14, 35),
+		)
+
+	def mock_gemini_response(self, client, payload):
+		client.return_value.__enter__.return_value = client.return_value
+		client.return_value.models.generate_content.return_value = SimpleNamespace(
+			text=json.dumps(payload),
+		)
+
+	def test_gemini_client_stays_open_during_request_and_closes_afterward(self):
+		reporter = self.create_user()
+		self.create_item(reporter)
+		client_transports = []
+
+		def create_client(**kwargs):
+			client = GeminiClient(**kwargs)
+			client_transports.append(client._api_client._httpx_client)
+			return client
+
+		def generate_content(models, **kwargs):
+			if models._api_client._httpx_client.is_closed:
+				raise RuntimeError(
+					"Cannot send a request, as the client has been closed."
+				)
+			return SimpleNamespace(text='{"matches": []}')
+
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.matching.genai.Client', side_effect=create_client),
+			patch.object(Models, 'generate_content', new=generate_content),
+		):
+			matches = find_possible_matches(item_name='Lost keys')
+
+		self.assertEqual(matches, [])
+		self.assertEqual(len(client_transports), 1)
+		self.assertTrue(client_transports[0].is_closed)
+
+	def test_matching_returns_only_database_found_items_and_does_not_save_a_report(self):
+		reporter = self.create_user()
+		found_item = self.create_item(reporter)
+		self.create_item(reporter, report_type='lost', item_name='Existing lost item')
+		payload = {
+			'matches': [
+				{
+					'item_id': str(found_item.pk),
+					'explanation': 'The color and location are consistent.',
+				},
+				{
+					'item_id': '000000000000000000000000',
+					'explanation': 'This ID is not in the database.',
+				},
+			],
+		}
+
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.matching.genai.Client') as gemini_client,
+		):
+			self.mock_gemini_response(gemini_client, payload)
+			matches = find_possible_matches(
+				item_name='Blue water bottle',
+				description='Lost near the student center.',
+				color='Blue',
+				location='Campus Center',
+			)
+
+		self.assertEqual(
+			[(match['item'].pk, match['explanation']) for match in matches],
+			[(found_item.pk, 'The color and location are consistent.')],
+		)
+		self.assertEqual(FoundItem.objects.count(), 2)
+		gemini_client.assert_called_once_with(api_key='unit-test-key')
+		request = gemini_client.return_value.models.generate_content.call_args
+		self.assertEqual(request.kwargs['model'], 'gemini-3.5-flash-lite')
+		self.assertIn('Blue water bottle', request.kwargs['contents'])
+		self.assertIn(str(found_item.pk), request.kwargs['contents'])
+		self.assertNotIn('matching-test-user@example.com', request.kwargs['contents'])
+		self.assertNotIn('ownership_question', request.kwargs['contents'])
+		self.assertNotIn('specific_area', request.kwargs['contents'])
+
+	def test_no_found_items_returns_without_calling_gemini(self):
+		reporter = self.create_user()
+		self.create_item(reporter, report_type='lost', item_name='Only lost item')
+
+		with patch('myapp.matching.genai.Client') as gemini_client:
+			matches = find_possible_matches(item_name='Lost keys')
+
+		self.assertEqual(matches, [])
+		gemini_client.assert_not_called()
+
+	def test_empty_gemini_matches_returns_empty_list(self):
+		reporter = self.create_user()
+		self.create_item(reporter)
+
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.matching.genai.Client') as gemini_client,
+		):
+			self.mock_gemini_response(gemini_client, {'matches': []})
+			matches = find_possible_matches(item_name='Lost keys')
+
+		self.assertEqual(matches, [])
+
+	def test_gemini_api_error_is_reported_as_matching_error(self):
+		reporter = self.create_user()
+		self.create_item(reporter)
+
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.matching.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				genai_errors.APIError(503, {'error': 'service unavailable'})
+			)
+			with self.assertRaises(MatchingError) as raised:
+				find_possible_matches(item_name='Lost keys')
+
+		self.assertEqual(
+			str(raised.exception),
+			'AI matching is temporarily unavailable.',
+		)
+		self.assertEqual(FoundItem.objects.count(), 1)
+
+	def test_missing_api_key_is_reported_without_calling_gemini(self):
+		reporter = self.create_user()
+		self.create_item(reporter)
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': ''}),
+			patch('myapp.matching.genai.Client') as gemini_client,
+		):
+			with self.assertRaisesMessage(
+				MatchingError,
+				'AI matching is not configured.',
+			):
+				find_possible_matches(item_name='Lost keys')
+
+		gemini_client.assert_not_called()
 
 
 class AuthenticationTests(TestCase):
@@ -403,6 +573,23 @@ class FoundItemReportTests(TestCase):
 			time_found=time(14, 35),
 		)
 
+	def test_report_form_accepts_optional_color(self):
+		form_data = {
+			'report_type': 'lost',
+			'item_name': 'Blue backpack',
+			'category': 'Bags & Luggage',
+			'location': 'Campus Center',
+			'date_found': '2026-11-10',
+		}
+
+		without_color = FoundItemForm(form_data)
+		self.assertTrue(without_color.is_valid(), without_color.errors)
+		self.assertEqual(without_color.cleaned_data['color'], '')
+
+		with_color = FoundItemForm({**form_data, 'color': 'Blue'})
+		self.assertTrue(with_color.is_valid(), with_color.errors)
+		self.assertEqual(with_color.cleaned_data['color'], 'Blue')
+
 	def create_uploaded_image(self, name='found-item.png'):
 		image_data = BytesIO()
 		Image.new('RGB', (1, 1), color='teal').save(image_data, format='PNG')
@@ -456,6 +643,8 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'enctype="multipart/form-data"')
 		self.assertContains(response, 'name="image"')
 		self.assertContains(response, 'New images stay private until an admin approves them.')
+		self.assertContains(response, 'data-report-only="lost"')
+		self.assertContains(response, 'data-match-url="/report/lost/matches/"')
 		self.assertContains(response, '>Publish found item report</button>', html=False)
 		self.assertContains(response, 'I Lost Something')
 		self.assertContains(response, 'I Found Something')
@@ -588,6 +777,12 @@ class FoundItemReportTests(TestCase):
 		response = self.client.get(reverse('found_report'), {'type': 'lost'})
 
 		self.assertContains(response, 'data-lost-text="Report a lost item"')
+		self.assertContains(response, 'Find Possible Matches')
+		self.assertContains(response, 'id="match-results" aria-live="polite"')
+		self.assertContains(response, 'new URLSearchParams()')
+		self.assertContains(response, 'No possible matches were found.')
+		self.assertContains(response, 'name="color"')
+		self.assertContains(response, 'values.set("report_type","lost")')
 		self.assertContains(response, 'Campus building')
 		self.assertContains(response, 'Date lost')
 		self.assertContains(response, 'Specific area')
@@ -606,6 +801,7 @@ class FoundItemReportTests(TestCase):
 				'report_type': 'lost',
 				'item_name': 'Lost blue backpack',
 				'description': 'Last seen near the library.',
+				'color': 'Blue',
 				'category': 'Bags & Luggage',
 				'location': 'Greenley Library',
 				'date_found': '2026-11-10',
@@ -620,6 +816,7 @@ class FoundItemReportTests(TestCase):
 		)
 		item = FoundItem.objects.get()
 		self.assertEqual(item.report_type, 'lost')
+		self.assertEqual(item.color, 'Blue')
 		self.assertEqual(item.specific_area, 'Near the north entrance')
 		self.assertIsNone(item.time_found)
 
@@ -630,6 +827,137 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(detail, '<dt>Specific area</dt>', html=True)
 		self.assertNotContains(detail, '<dt>Time lost</dt>', html=False)
 		self.assertContains(self.client.get(reverse('browse_items'), {'type': 'lost'}), 'Lost blue backpack')
+
+	def test_match_endpoint_returns_found_item_details_without_saving_lost_report(self):
+		user = self.create_user()
+		self.client.force_login(user)
+		found_item = self.create_found_item(user, 'Blue water bottle')
+		image = self.create_uploaded_image()
+
+		with patch('myapp.views.find_possible_matches') as find_matches:
+			find_matches.return_value = [{
+				'item': found_item,
+				'explanation': 'The color and building are similar.',
+			}]
+			response = self.client.post(
+				reverse('find_lost_item_matches'),
+				{
+					'report_type': 'lost',
+					'item_name': 'Lost blue bottle',
+					'description': 'A bottle with a campus logo.',
+					'color': 'Blue',
+					'location': 'Campus Center',
+					'image': image,
+				},
+			)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(
+			response.json(),
+			{
+				'ok': True,
+				'matches': [{
+					'item_id': str(found_item.pk),
+					'item_name': 'Blue water bottle',
+					'description': 'A reported campus item.',
+					'location': 'Campus Center',
+					'explanation': 'The color and building are similar.',
+				}],
+			},
+		)
+		self.assertEqual(FoundItem.objects.count(), 1)
+		find_matches.assert_called_once_with(
+			item_name='Lost blue bottle',
+			description='A bottle with a campus logo.',
+			color='Blue',
+			location='Campus Center',
+		)
+
+	def test_match_endpoint_requires_login_and_lost_report_type(self):
+		url = reverse('find_lost_item_matches')
+		response = self.client.post(url, {'report_type': 'lost', 'item_name': 'Lost keys'})
+		self.assertRedirects(response, f'{reverse("login")}?next={url}')
+
+		self.client.force_login(self.create_user())
+		with patch('myapp.views.find_possible_matches') as find_matches:
+			response = self.client.post(
+				url,
+				{'report_type': 'found', 'item_name': 'Found keys'},
+			)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertFalse(response.json()['ok'])
+		find_matches.assert_not_called()
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_match_endpoint_returns_empty_matches_without_saving_report(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		with patch('myapp.views.find_possible_matches', return_value=[]) as find_matches:
+			response = self.client.post(
+				reverse('find_lost_item_matches'),
+				{
+					'report_type': 'lost',
+					'item_name': 'Lost green umbrella',
+					'location': 'Campus Center',
+				},
+			)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json(), {'ok': True, 'matches': []})
+		self.assertFalse(FoundItem.objects.exists())
+		find_matches.assert_called_once()
+
+	def test_match_endpoint_returns_friendly_error_and_report_can_still_be_submitted(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		with patch(
+			'myapp.views.find_possible_matches',
+			side_effect=MatchingError('Private API details and key'),
+		):
+			response = self.client.post(
+				reverse('find_lost_item_matches'),
+				{
+					'report_type': 'lost',
+					'item_name': 'Lost green umbrella',
+					'location': 'Campus Center',
+				},
+			)
+
+		self.assertEqual(response.status_code, 503)
+		self.assertEqual(
+			response.json(),
+			{
+				'ok': False,
+				'error': (
+					"We couldn't check for matches right now. "
+					'You can still submit your report.'
+				),
+			},
+		)
+		self.assertNotIn(b'Private API details', response.content)
+		self.assertFalse(FoundItem.objects.exists())
+
+		submit_response = self.client.post(
+			reverse('found_report'),
+			{
+				'report_type': 'lost',
+				'item_name': 'Lost green umbrella',
+				'category': 'Accessories',
+				'location': 'Campus Center',
+				'date_found': '2026-11-10',
+			},
+		)
+
+		self.assertRedirects(
+			submit_response,
+			reverse('found_report'),
+			fetch_redirect_response=False,
+		)
+		self.assertEqual(FoundItem.objects.count(), 1)
+		self.assertEqual(FoundItem.objects.get().report_type, 'lost')
 
 	def test_uploaded_image_is_private_until_an_admin_approves_it(self):
 		reporter = self.create_user()

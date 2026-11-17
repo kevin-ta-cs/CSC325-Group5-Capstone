@@ -37,6 +37,7 @@ class FoundItemForm(forms.ModelForm):
             'report_type',
             'item_name',
             'description',
+            'color',
             'category',
             'location',
             'specific_area',
