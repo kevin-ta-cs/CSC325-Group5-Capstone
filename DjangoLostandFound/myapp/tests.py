@@ -25,6 +25,7 @@ User = get_user_model()
 GeminiClient = genai.Client
 
 
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class GeminiMatchingTests(TestCase):
 	password = 'CampusFind!2026Strong'
 
@@ -185,6 +186,7 @@ class GeminiMatchingTests(TestCase):
 		gemini_client.assert_not_called()
 
 
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class AuthenticationTests(TestCase):
 	password = 'CampusFind!2026Strong'
 
@@ -545,6 +547,7 @@ class AuthenticationTests(TestCase):
 		)
 
 
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class FoundItemReportTests(TestCase):
 	password = 'CampusFind!2026Strong'
 
@@ -1178,6 +1181,66 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(filtered_response, '1 active reports')
 		self.assertContains(filtered_response, 'Brass key ring with three keys')
 		self.assertNotContains(filtered_response, 'Campus item 0')
+
+	def test_browse_items_paginates_and_preserves_filters_and_sort(self):
+		reporter = self.create_user()
+		FoundItem.objects.bulk_create([
+			FoundItem(
+				reporter=reporter,
+				item_name=f'Campus item {index:02d}',
+				category='Accessories',
+				location='Campus Center',
+				date_found=date(2026, 11, 10),
+			)
+			for index in range(26)
+		])
+		expected_total = 26 + sum(
+			report['category'] == 'Accessories'
+			for report in REPORTS
+		)
+		query = {'category': 'Accessories', 'sort': 'oldest'}
+
+		first_page = self.client.get(reverse('browse_items'), query)
+
+		self.assertContains(first_page, f'{expected_total} active reports')
+		self.assertEqual(
+			first_page.content.decode().count('class="report-card">'),
+			25,
+		)
+		self.assertContains(
+			first_page,
+			'category=Accessories&amp;sort=oldest&amp;page=2',
+		)
+
+		second_page = self.client.get(
+			reverse('browse_items'),
+			{**query, 'page': 2},
+		)
+
+		self.assertContains(second_page, f'{expected_total} active reports')
+		self.assertEqual(
+			second_page.content.decode().count('class="report-card">'),
+			expected_total - 25,
+		)
+		self.assertContains(
+			second_page,
+			'category=Accessories&amp;sort=oldest&amp;page=1',
+		)
+		for index in range(26):
+			item_name = f'Campus item {index:02d}'
+			self.assertNotEqual(
+				item_name in first_page.content.decode(),
+				item_name in second_page.content.decode(),
+				item_name,
+			)
+
+		search_response = self.client.get(
+			reverse('browse_items'),
+			{'q': 'Campus item 03'},
+		)
+		self.assertContains(search_response, '1 active reports')
+		self.assertContains(search_response, 'Campus item 03')
+		self.assertNotContains(search_response, 'Campus item 04')
 
 	def test_invalid_item_detail_identifiers_return_not_found(self):
 		self.assertEqual(
