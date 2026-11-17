@@ -82,8 +82,11 @@ not have a reporter to receive requests.
 Found-item reports may include an image. Uploaded images remain private to the
 reporter and report administrators until a user with `change_founditem`
 permission approves them from the dashboard or Django admin. Only approved
-images appear in public listings and detail pages. Uploaded files are stored
-under `DjangoLostandFound/media/`, which is excluded from Git.
+images appear in public listings and detail pages. By default, local
+development stores files under `DjangoLostandFound/media/`, which is excluded
+from Git. For shared or deployed use, configure an S3-compatible object-storage
+bucket as described below so every application instance can access the same
+uploads.
 
 # Running the Project
 
@@ -102,16 +105,39 @@ under `DjangoLostandFound/media/`, which is excluded from Git.
    python3 -m pip install -r requirements.txt
    ```
 
+   On Windows, use `py` if the Python launcher is installed, or `python` otherwise. If neither command works, install Python and enable **Add python.exe to PATH** in the installer, then restart VS Code.
+
 4. Create a `.env` file inside the outer `DjangoLostandFound` folder, alongside `manage.py`.
 
 5. Add the following environment variables:
 
    ```dotenv
    DJANGO_SECRET_KEY=Y3VujzyOVsIuL30v4W5yuYj4kAFYeMIPubH3gJPXMDsRwcaK1LgAy2all6zpG4jF86A
-   MONGODB_URI=MONGODB_URI=mongodb+srv://user:password@lostandfound.db1lsrs.mongodb.net/
+   MONGODB_URI=mongodb+srv://user:password@lostandfound.db1lsrs.mongodb.net/
    ```
 
 6. Replace the placeholders with your own authorized credentials. Never commit or share the `.env` file.
+
+   For shared uploads, also configure an S3-compatible bucket and add its
+   settings to the deployment environment (or the `.env` file for local
+   testing):
+
+   ```dotenv
+   AWS_STORAGE_BUCKET_NAME=your-private-bucket
+   AWS_S3_REGION_NAME=your-bucket-region
+   AWS_ACCESS_KEY_ID=your-access-key
+   AWS_SECRET_ACCESS_KEY=your-secret-key
+   ```
+
+   Use credentials with access only to that bucket. On AWS, an instance role
+   can provide credentials instead of access-key environment variables. For
+   S3-compatible providers, set `AWS_S3_ENDPOINT_URL` to the provider's
+   endpoint. Keep the bucket private; the application serves images through
+   its existing permission-checked image route. If
+   `AWS_STORAGE_BUCKET_NAME` is not set, uploads remain local and are not
+   shared between machines or deployments. Previously uploaded local files
+   are not copied automatically; copy them to the bucket using their existing
+   storage paths before switching to shared storage.
 
 7. Navigate to the Django application directory:
 
@@ -124,6 +150,8 @@ under `DjangoLostandFound/media/`, which is excluded from Git.
    ```bash
    python3 manage.py runserver
    ```
+
+   On Windows, run `py manage.py runserver` or `python manage.py runserver`, depending on which command works on your installation.
 
 ## Running Automated Tests
 

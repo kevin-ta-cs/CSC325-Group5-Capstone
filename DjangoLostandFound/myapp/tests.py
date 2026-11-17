@@ -1076,10 +1076,12 @@ class FoundItemReportTests(TestCase):
 			f'<img src="{image_url}" alt="Blue water bottle" loading="lazy">',
 			html=False,
 		)
-		self.assertEqual(
-			self.client.get(image_url).status_code,
-			200,
-		)
+		image_response = self.client.get(image_url)
+		try:
+			self.assertEqual(image_response.status_code, 200)
+			self.assertTrue(b''.join(image_response.streaming_content))
+		finally:
+			image_response.close()
 
 	def test_replacing_an_approved_image_requires_new_approval(self):
 		reporter = self.create_user()
