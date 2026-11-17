@@ -1,15 +1,33 @@
 import random
 import re
 from datetime import date
+from itertools import chain
 from uuid import uuid4
 
 from django.contrib.messages import get_messages
+from django.core.paginator import Paginator
 from django.middleware.csrf import get_token
 from django.urls import reverse
 from django.utils.formats import date_format
 from django.utils.html import format_html, format_html_join
 
 from .models import BUILDING_CHOICES, FoundItem, ITEM_CATEGORY_CHOICES
+
+
+CATALOG_PAGE_SIZE = 25
+CATALOG_FIELDS = (
+    "pk",
+    "report_type",
+    "category",
+    "item_name",
+    "specific_area",
+    "description",
+    "location",
+    "date_found",
+    "time_found",
+    "image",
+    "image_approved",
+)
 
 
 REPORTS = (
@@ -686,61 +704,74 @@ def _filter_form(request, action):
     )
 
 
-def _catalog_reports():
-    reports = [
+def _sample_reports():
+    return [
         {**report, "item_id": f"sample-{index}"}
         for index, report in enumerate(REPORTS)
     ]
+
+
+def _catalog_items(request=None):
+    items = FoundItem.objects.values(*CATALOG_FIELDS)
+    if request is not None:
+        for parameter, field in (
+            ("type", "report_type"),
+            ("category", "category"),
+            ("building", "location"),
+        ):
+            value = request.GET.get(parameter, "")
+            if value:
+                items = items.filter(**{field: value})
+    return items
+
+
+def _catalog_item_report(item):
+    return {
+        "type": item["report_type"],
+        "item_id": str(item["pk"]),
+        "category": item["category"],
+        "title": item["item_name"],
+        "description": " ".join(
+            part for part in (item["specific_area"], item["description"]) if part
+        ),
+        "building": item["location"],
+        "date": item["date_found"].isoformat(),
+        "time": (
+            item["time_found"].strftime("%I:%M %p").lstrip("0")
+            if item["time_found"]
+            else ""
+        ),
+        "image": (
+            reverse("found_item_image", args=(item["pk"],))
+            if item["image"] and item["image_approved"]
+            else ""
+        ),
+        "alt": item["item_name"],
+    }
+
+
+def _catalog_reports(request=None):
+    reports = _sample_reports()
     reports.extend(
-        {
-            "type": item["report_type"],
-            "item_id": str(item["pk"]),
-            "category": item["category"],
-            "title": item["item_name"],
-            "description": " ".join(
-                part
-                for part in (item["specific_area"], item["description"])
-                if part
-            ),
-            "building": item["location"],
-            "date": item["date_found"].isoformat(),
-            "time": (
-                item["time_found"].strftime("%I:%M %p").lstrip("0")
-                if item["time_found"]
-                else ""
-            ),
-            "image": (
-                reverse("found_item_image", args=(item["pk"],))
-                if item["image"] and item["image_approved"]
-                else ""
-            ),
-            "alt": item["item_name"],
-        }
-        for item in FoundItem.objects.values(
-            "pk",
-            "report_type",
-            "category",
-            "item_name",
-            "specific_area",
-            "description",
-            "location",
-            "date_found",
-            "time_found",
-            "image",
-            "image_approved",
-        )
+        _catalog_item_report(item)
+        for item in _catalog_items(request).iterator()
     )
     return reports
 
 
-def _filter_reports(request, reports):
-    selected_type = request.GET.get("type", "")
-    selected_category = request.GET.get("category", "")
-    selected_building = request.GET.get("building", "")
-    search = request.GET.get("q", "").strip()[:100].casefold()
-    reports = [
-        report for report in reports
-        if (not selected_type or report["type"] == selected_type)
+def _report_filters(request):
+    return (
+        request.GET.get("type", ""),
+        request.GET.get("category", ""),
+        request.GET.get("building", ""),
+        request.GET.get("q", "").strip()[:100].casefold(),
+    )
+
+
+def _report_matches(filters, report):
+    selected_type, selected_category, selected_building, search = filters
+    return (
+        (not selected_type or report["type"] == selected_type)
         and (not selected_category or report["category"] == selected_category)
         and (not selected_building or report["building"] == selected_building)
         and (
@@ -749,7 +780,10 @@ def _filter_reports(request, reports):
                 (report["title"], report["description"], report["category"], report["building"])
             ).casefold()
         )
-    ]
+    )
+
+
+def _sort_reports(request, reports):
     sort = request.GET.get("sort", "newest")
     if sort == "oldest":
         reports.sort(key=lambda report: report["date"])
@@ -758,6 +792,96 @@ def _filter_reports(request, reports):
     else:
         reports.sort(key=lambda report: report["date"], reverse=True)
     return reports
+
+
+def _filter_reports(request, reports):
+    filters = _report_filters(request)
+    return _sort_reports(
+        request,
+        [report for report in reports if _report_matches(filters, report)],
+    )
+
+
+def _sample_catalog_reports(request, limit):
+    selected = []
+    total = 0
+    filters = _report_filters(request)
+    catalog_items = (
+        _catalog_item_report(item)
+        for item in _catalog_items(request).iterator()
+    )
+    for report in chain(_sample_reports(), catalog_items):
+        if not _report_matches(filters, report):
+            continue
+        total += 1
+        if len(selected) < limit:
+            selected.append(report)
+        else:
+            index = random.randrange(total)
+            if index < limit:
+                selected[index] = report
+    return total, _sort_reports(request, selected)
+
+
+def _browse_catalog(request):
+    search = request.GET.get("q", "").strip()[:100]
+    sort = request.GET.get("sort", "newest")
+    if not search and sort != "title":
+        sample_reports = _filter_reports(request, _sample_reports())
+        items = _catalog_items(request)
+        total = len(sample_reports) + items.count()
+        page = Paginator(range(total), CATALOG_PAGE_SIZE).get_page(
+            request.GET.get("page"),
+        )
+        end = page.end_index()
+        order = "date_found" if sort == "oldest" else "-date_found"
+        reports = sample_reports + [
+            _catalog_item_report(item)
+            for item in items.order_by(order, "pk")[:end]
+        ]
+        _sort_reports(request, reports)
+        start = max(page.start_index() - 1, 0)
+        return reports[start:end], page, total
+
+    reports = _filter_reports(request, _catalog_reports(request))
+    page = Paginator(reports, CATALOG_PAGE_SIZE).get_page(
+        request.GET.get("page"),
+    )
+    return page.object_list, page, len(reports)
+
+
+def _catalog_pagination(request, page):
+    if page.paginator.num_pages < 2:
+        return ""
+
+    def page_link(number, label, relation):
+        query = request.GET.copy()
+        query["page"] = number
+        return format_html(
+            '<a href="{}" rel="{}">{}</a>',
+            f'{reverse("browse_items")}?{query.urlencode()}',
+            relation,
+            label,
+        )
+
+    previous = (
+        page_link(page.previous_page_number(), "Previous", "prev")
+        if page.has_previous()
+        else format_html('<span aria-disabled="true">{}</span>', "Previous")
+    )
+    next_page = (
+        page_link(page.next_page_number(), "Next", "next")
+        if page.has_next()
+        else format_html('<span aria-disabled="true">{}</span>', "Next")
+    )
+    return format_html(
+        '<nav class="pagination" aria-label="Catalog pages">{}'
+        '<span aria-current="page">Page {} of {}</span>{}</nav>',
+        previous,
+        page.number,
+        page.paginator.num_pages,
+        next_page,
+    )
 
 
 def _report_cards_markup(reports):
@@ -896,6 +1020,9 @@ BROWSE_ITEMS_PAGE = """<!doctype html>
     .report-content h3 { margin: 0 0 8px; font-size: 1.06rem; line-height: 1.3; }
     .report-description { min-height: 54px; margin: 0 0 14px; color: var(--muted); font-size: .85rem; }
     .report-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; color: var(--muted); font-size: .77rem; }
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 28px; }
+    .pagination a { padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font-weight: 700; text-decoration: none; }
+    .pagination span { color: var(--muted); }
     .report-details-link { display: flex; justify-content: space-between; margin-top: 20px; padding: 14px 16px; border-radius: 14px; background: #f3f4f3; color: #1b2221; font-weight: 750; }
     .report-card-link:hover .report-details-link { background: #e8f8f4; color: #087c70; }
     .report-card-link:focus-visible { outline: 3px solid #43b9a7; outline-offset: 4px; border-radius: 18px; }
@@ -979,6 +1106,7 @@ BROWSE_ITEMS_PAGE = """<!doctype html>
         <span>✳ &nbsp;Smart matches compare category, place, date, and description</span>
       </div>
       <div class="report-grid">__REPORT_CARDS__</div>
+      __PAGINATION__
     </section>
   </main>
   <footer class="site-footer">
@@ -1008,13 +1136,7 @@ BROWSE_ITEMS_PAGE = """<!doctype html>
 
 
 def home_page(request):
-    reports = _filter_reports(request, _catalog_reports())
-    visible_reports = random.sample(reports, min(6, len(reports)))
-    sort = request.GET.get("sort", "newest")
-    if sort == "oldest":
-        visible_reports.sort(key=lambda report: report["date"])
-    elif sort == "title":
-        visible_reports.sort(key=lambda report: report["title"].casefold())
+    report_count, visible_reports = _sample_catalog_reports(request, 6)
 
     account_link, account_url, dashboard_url = _account_navigation(request)
     page = HOME_PAGE
@@ -1029,7 +1151,7 @@ def home_page(request):
         ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__BROWSE_ITEMS_URL__", reverse("browse_items")),
         ("__FILTERS__", str(_filter_form(request, "#recent-items"))),
-        ("__REPORT_COUNT__", str(len(reports))),
+        ("__REPORT_COUNT__", str(report_count)),
         ("__DISPLAY_COUNT__", str(len(visible_reports))),
         ("__REPORT_CARDS__", str(_report_cards_markup(visible_reports))),
         ("__YEAR__", str(date.today().year)),
@@ -1039,7 +1161,7 @@ def home_page(request):
 
 
 def browse_items_page(request):
-    reports = _filter_reports(request, _catalog_reports())
+    reports, page_obj, total = _browse_catalog(request)
     account_link, account_url, dashboard_url = _account_navigation(request)
     page = BROWSE_ITEMS_PAGE
     for placeholder, value in (
@@ -1051,8 +1173,9 @@ def browse_items_page(request):
         ("__FOUND_REPORT_URL__", reverse("found_report")),
         ("__BROWSE_ITEMS_URL__", reverse("browse_items")),
         ("__FILTERS__", str(_filter_form(request, reverse("browse_items")))),
-        ("__REPORT_COUNT__", str(len(reports))),
+        ("__REPORT_COUNT__", str(total)),
         ("__REPORT_CARDS__", str(_report_cards_markup(reports))),
+        ("__PAGINATION__", str(_catalog_pagination(request, page_obj))),
         ("__YEAR__", str(date.today().year)),
         ("__THEME_SCRIPT__", _theme_script()),
     ):

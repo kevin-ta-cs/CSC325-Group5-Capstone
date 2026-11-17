@@ -68,8 +68,8 @@ a time. Both types support a specific-area detail. Buildings are selected from
 the existing campus building list. Submitted reports are saved and displayed
 in the campus catalog; the category choices match the catalog filters. The
 home page shows up to six randomly selected reports, while Browse items opens
-the full searchable and filterable catalog. Members can edit or delete their
-own reports from the user dashboard.
+the searchable and filterable catalog in pages of 25 reports. Members can edit
+or delete their own reports from the user dashboard.
 
 The report form follows the prototype's in-place lost/found toggle. Found
 reports may include an ownership-verification question; claimants can answer it
