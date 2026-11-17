@@ -1566,6 +1566,24 @@ FOUND_ITEM_PAGE = """<!doctype html>
       background: var(--action-green); color: #fff; font-weight: 800; cursor: pointer;
     }
     .submit-button:hover { background: #003e3a; }
+    .match-button {
+      grid-column: 1 / -1; min-height: 46px; padding: 11px 20px; border: 1px solid #087c70;
+      border-radius: 12px; background: transparent; color: #087c70; font-weight: 750; cursor: pointer;
+    }
+    body.theme-dark .match-button { border-color: #66d8c6; color: #8ce8d8; }
+    .match-button:disabled { cursor: wait; opacity: .7; }
+    .match-results { grid-column: 1 / -1; }
+    .match-results:empty { display: none; }
+    .match-result { margin: 0 0 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; }
+    .match-result h3 { margin: 0 0 4px; font-size: 1rem; }
+    .match-result p { margin: 4px 0; color: var(--muted); }
+    .claim-placeholder-button {
+      margin-top: 8px; padding: 9px 14px; border: 0; border-radius: 10px;
+      background: var(--action-green); color: #fff; font-weight: 750; cursor: pointer;
+    }
+    .claim-placeholder-button:hover { background: #003e3a; }
+    .claim-placeholder-message { margin-top: 8px !important; color: var(--accent) !important; }
+    .match-disclaimer { margin: 8px 0 0; font-size: .82rem; }
     .form-footer { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .84rem; }
     .site-footer { background: #090a0b; color: #b6c0be; }
     .footer-inner { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 40px; padding-block: 42px 24px; }
@@ -1654,6 +1672,8 @@ FOUND_ITEM_PAGE = """<!doctype html>
           __ERROR_SUMMARY__
           __FORM_FIELDS__
           <p class="form-footer">Your report will be listed with its category, campus building, and date. Found-item reports also include the time found.</p>
+          __MATCH_BUTTON__
+          <div class="match-results" id="match-results" aria-live="polite"></div>
           <button class="submit-button" type="submit" data-report-type-text data-lost-text="Publish lost item report" data-found-text="Publish found item report">__SUBMIT_LABEL__</button>
         </form>
       </section>
@@ -1786,8 +1806,9 @@ def found_item_page(request, form, editing=False):
         else ""
     )
     form_fields = format_html(
-        "{}{}{}{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}{}{}{}",
         _found_item_field(form, "item_name", "Item name", full_width=True, report_type=report_type),
+        _found_item_field(form, "color", "Color (optional)", report_type=report_type),
         _found_item_field(form, "category", "Category"),
         _found_item_field(form, "location", "Campus building", report_type=report_type),
         _found_item_field(
@@ -1822,6 +1843,16 @@ def found_item_page(request, form, editing=False):
             report_type=report_type,
         ),
     )
+    match_button = (
+        format_html(
+            '<button class="match-button" type="button" data-report-only="lost"{} '
+            'data-match-url="{}" data-find-matches>Find Possible Matches</button>',
+            ' hidden="hidden"' if report_type != "lost" else "",
+            reverse("find_lost_item_matches"),
+        )
+        if not editing
+        else ""
+    )
     notices = format_html_join(
         "",
         '<p class="notice" role="status">{}</p>',
@@ -1839,6 +1870,7 @@ def found_item_page(request, form, editing=False):
         ("__REPORT_TOGGLE__", str(report_toggle)),
         ("__REPORT_TYPE_LABEL__", type_label.title()),
         ("__REPORT_TYPE_INPUT__", str(form["report_type"])),
+        ("__MATCH_BUTTON__", str(match_button)),
         ("__PAGE_TITLE__", f"Edit {type_label} item" if editing else f"Report a {type_label} item"),
         (
             "__FORM_INTRO__",
@@ -1887,6 +1919,75 @@ def found_item_page(request, form, editing=False):
                 '}'
                 'buttons.forEach(button=>button.addEventListener("click",()=>selectType(button.dataset.reportType)));'
                 'selectType(typeInput.value);'
+                'const matchButton=form.querySelector("[data-find-matches]");'
+                'const results=document.querySelector("#match-results");'
+                'if(matchButton&&results){'
+                'matchButton.addEventListener("click",async()=>{'
+                'const values=new URLSearchParams();'
+                '["item_name","description","color","location"].forEach(name=>{'
+                'values.set(name,form.elements[name]?.value||"");'
+                '});'
+                'values.set("report_type","lost");'
+                'const csrf=form.querySelector("[name=csrfmiddlewaretoken]");'
+                'if(csrf)values.set("csrfmiddlewaretoken",csrf.value);'
+                'matchButton.disabled=true;'
+                'results.replaceChildren();'
+                'const status=document.createElement("p");'
+                'status.setAttribute("role","status");'
+                'status.textContent="Checking for possible matches...";'
+                'results.append(status);'
+                'try{'
+                'const response=await fetch(matchButton.dataset.matchUrl,{'
+                'method:"POST",credentials:"same-origin",'
+                'headers:{"X-CSRFToken":csrf?.value||"","Accept":"application/json"},'
+                'body:values'
+                '});'
+                'const data=await response.json();'
+                'if(!response.ok||!data.ok)throw new Error();'
+                'results.replaceChildren();'
+                'if(!data.matches.length){'
+                'status.textContent="No possible matches were found.";'
+                'results.append(status);'
+                'return;'
+                '}'
+                'const heading=document.createElement("h2");'
+                'heading.textContent="Possible matches";'
+                'results.append(heading);'
+                'data.matches.forEach(match=>{'
+                'const card=document.createElement("article");'
+                'card.className="match-result";'
+                'const name=document.createElement("h3");'
+                'name.textContent=match.item_name;'
+                'const description=document.createElement("p");'
+                'description.textContent=match.description||"No description provided.";'
+                'const location=document.createElement("p");'
+                'location.textContent="Location: "+match.location;'
+                'const explanation=document.createElement("p");'
+                'explanation.textContent=match.explanation;'
+                'const claimButton=document.createElement("button");'
+                'claimButton.type="button";'
+                'claimButton.className="claim-placeholder-button";'
+                'claimButton.textContent="This Is My Item";'
+                'const claimMessage=document.createElement("p");'
+                'claimMessage.className="claim-placeholder-message";'
+                'claimMessage.setAttribute("role","status");'
+                'claimMessage.hidden=true;'
+                'claimMessage.textContent="The item claiming feature is coming soon!";'
+                'claimButton.addEventListener("click",()=>{claimMessage.hidden=false;});'
+                'card.append(name,description,location,explanation,claimButton,claimMessage);'
+                'results.append(card);'
+                '});'
+                'const disclaimer=document.createElement("p");'
+                'disclaimer.className="match-disclaimer";'
+                'disclaimer.textContent="These are possible matches only; review details and submit your report to continue.";'
+                'results.append(disclaimer);'
+                '}catch(error){'
+                'results.replaceChildren();'
+                'status.textContent="We couldn’t check for matches right now. You can still submit your report.";'
+                'results.append(status);'
+                '}finally{matchButton.disabled=false;}'
+                '});'
+                '}'
                 '})();</script>'
             ),
         ),

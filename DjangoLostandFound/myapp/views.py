@@ -4,11 +4,12 @@ from django.contrib.auth.views import LoginView
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_POST
 
 from .forms import DashboardUsernameForm, FoundItemForm, FoundItemInquiryForm, SignUpForm
+from .matching import MatchingError, find_possible_matches
 from .models import FoundItem, FoundItemInquiry
 from .pages import (
     REPORTS,
@@ -129,6 +130,62 @@ def report_found_item(request):
         return redirect('found_report')
 
     return HttpResponse(found_item_page(request, form))
+
+
+@login_required(login_url='login')
+@require_POST
+def find_lost_item_matches(request):
+    if request.POST.get('report_type') != 'lost':
+        return JsonResponse(
+            {'ok': False, 'error': 'Match checks are only available for lost reports.'},
+            status=400,
+        )
+
+    item_name = request.POST.get('item_name', '').strip()
+    description = request.POST.get('description', '').strip()
+    color = request.POST.get('color', '').strip()
+    location = request.POST.get('location', '').strip()
+
+    if not item_name:
+        return JsonResponse(
+            {'ok': False, 'error': 'Enter an item name to check for matches.'},
+            status=400,
+        )
+
+    try:
+        matches = find_possible_matches(
+            item_name=item_name,
+            description=description,
+            color=color,
+            location=location,
+        )
+    except MatchingError:
+        return JsonResponse(
+            {
+                'ok': False,
+                'error': (
+                    "We couldn't check for matches right now. "
+                    'You can still submit your report.'
+                ),
+            },
+            status=503,
+        )
+
+    return JsonResponse(
+        {
+            'ok': True,
+            'matches': [
+                {
+                    'item_id': str(match['item'].pk),
+                    'item_name': match['item'].item_name,
+                    'description': match['item'].description,
+                    'location': match['item'].location,
+                    'explanation': match['explanation'],
+                }
+                for match in matches
+            ],
+        }
+    )
 
 
 def _found_item_or_404(item_id):

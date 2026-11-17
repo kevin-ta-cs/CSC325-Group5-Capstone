@@ -10,6 +10,11 @@ urlpatterns = [
     path('dashboard/', views.user_dashboard, name='user_dashboard'),
     path('report/found/', views.report_found_item, name='found_report'),
     path(
+        'report/lost/matches/',
+        views.find_lost_item_matches,
+        name='find_lost_item_matches',
+    ),
+    path(
         'report/found/<str:item_id>/image/',
         views.found_item_image,
         name='found_item_image',

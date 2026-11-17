@@ -55,6 +55,7 @@ class FoundItem(models.Model):
     )
     item_name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
+    color = models.CharField(max_length=64, blank=True)
     category = models.CharField(max_length=32, choices=ITEM_CATEGORY_CHOICES)
     location = models.CharField(max_length=160, choices=BUILDING_CHOICES)
     specific_area = models.CharField(max_length=160, blank=True)
