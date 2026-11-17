@@ -71,20 +71,21 @@ def user_dashboard(request):
         or request.user.has_perm('myapp.delete_founditem')
     )
     can_approve_images = request.user.has_perm('myapp.change_founditem')
-    own_items = list(request.user.found_items.order_by(
-        '-date_found',
-        '-time_found',
-        '-created_at',
-    ))
-    found_items = list(
-        FoundItem.objects.all().order_by(
-            '-date_found',
-            '-time_found',
-            '-created_at',
-        )
-    ) if can_manage_reports else own_items
+    ordering = ('-date_found', '-time_found', '-created_at')
+    if can_manage_reports:
+        found_items = list(FoundItem.objects.all().order_by(*ordering))
+        own_item_ids = [
+            item.pk for item in found_items
+            if item.reporter_id == request.user.pk
+        ]
+    else:
+        found_items = list(request.user.found_items.order_by(*ordering))
+        own_item_ids = [item.pk for item in found_items]
     inquiries = FoundItemInquiry.objects.filter(
-        item_id__in=[item.pk for item in own_items],
+        item_id__in=own_item_ids,
+    ).select_related(
+        'item',
+        'requester',
     ).order_by('-created_at')
     return HttpResponse(
         user_dashboard_page(

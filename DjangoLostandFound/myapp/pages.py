@@ -693,28 +693,42 @@ def _catalog_reports():
     ]
     reports.extend(
         {
-            "type": item.report_type,
-            "item_id": str(item.pk),
-            "category": item.category,
-            "title": item.item_name,
+            "type": item["report_type"],
+            "item_id": str(item["pk"]),
+            "category": item["category"],
+            "title": item["item_name"],
             "description": " ".join(
-                part for part in (item.specific_area, item.description) if part
+                part
+                for part in (item["specific_area"], item["description"])
+                if part
             ),
-            "building": item.location,
-            "date": item.date_found.isoformat(),
+            "building": item["location"],
+            "date": item["date_found"].isoformat(),
             "time": (
-                item.time_found.strftime("%I:%M %p").lstrip("0")
-                if item.time_found
+                item["time_found"].strftime("%I:%M %p").lstrip("0")
+                if item["time_found"]
                 else ""
             ),
             "image": (
-                reverse("found_item_image", args=(item.pk,))
-                if item.image and item.image_approved
+                reverse("found_item_image", args=(item["pk"],))
+                if item["image"] and item["image_approved"]
                 else ""
             ),
-            "alt": item.item_name,
+            "alt": item["item_name"],
         }
-        for item in FoundItem.objects.all()
+        for item in FoundItem.objects.values(
+            "pk",
+            "report_type",
+            "category",
+            "item_name",
+            "specific_area",
+            "description",
+            "location",
+            "date_found",
+            "time_found",
+            "image",
+            "image_approved",
+        )
     )
     return reports
 
