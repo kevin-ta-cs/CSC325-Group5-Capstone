@@ -129,6 +129,37 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"
+
+media_storage_bucket = os.getenv("AWS_STORAGE_BUCKET_NAME")
+if media_storage_bucket:
+    media_storage_options = {
+        "bucket_name": media_storage_bucket,
+        "querystring_auth": True,
+    }
+    media_storage_region = os.getenv("AWS_S3_REGION_NAME")
+    if media_storage_region:
+        media_storage_options["region_name"] = media_storage_region
+
+    media_storage_endpoint = os.getenv("AWS_S3_ENDPOINT_URL")
+    if media_storage_endpoint:
+        media_storage_options["endpoint_url"] = media_storage_endpoint
+
+    default_media_storage = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": media_storage_options,
+    }
+else:
+    default_media_storage = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    }
+
+STORAGES = {
+    "default": default_media_storage,
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 
 # Email
