@@ -68,7 +68,12 @@ class PhotoAnalysisTests(SimpleTestCase):
 			request.kwargs['config'].response_schema['properties']['category']['enum'],
 			list(ALLOWED_CATEGORIES),
 		)
-		self.assertIn('Do not infer brands, ownership, locations, dates', request.kwargs['contents'][0])
+		prompt = request.kwargs['contents'][0]
+		self.assertIn('Describe only the item itself', prompt)
+		self.assertIn('ignore people, hands, the background', prompt)
+		self.assertIn('clearly visible brand or logo', prompt)
+		self.assertIn('one concise sentence of about 10-20 words', prompt)
+		self.assertIn('Do not invent or infer details that are not clearly visible', prompt)
 		image_part = request.kwargs['contents'][1]
 		self.assertEqual(image_part.inline_data.mime_type, 'image/png')
 		image.seek(0)
