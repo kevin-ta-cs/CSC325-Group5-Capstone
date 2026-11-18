@@ -1,6 +1,8 @@
 import mimetypes
 
 from django.contrib.auth.views import LoginView
+import logging
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -22,6 +24,8 @@ from .pages import (
     signup_page,
     user_dashboard_page,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def home(request):
@@ -211,8 +215,10 @@ def analyze_uploaded_item_photo(request):
         analysis = analyze_item_photo(uploaded_image)
     except PhotoAnalysisError as error:
         message = str(error)
-        if message.startswith('AI photo analysis is temporarily unavailable.'):
+        if message.startswith('Photo analysis is temporarily unavailable.'):
             status = 503
+        elif message.startswith('Photo analysis is taking too long.'):
+            status = 504
         elif message.startswith('AI photo analysis is not configured.'):
             status = 503
         elif message.startswith('AI photo analysis returned an invalid response.'):
@@ -220,6 +226,16 @@ def analyze_uploaded_item_photo(request):
         else:
             status = 400
         return JsonResponse({'error': message}, status=status)
+    except Exception:
+        logger.exception('Unexpected photo analysis endpoint failure')
+        return JsonResponse(
+            {
+                'error': (
+                    'Photo analysis is temporarily unavailable. Please try again.'
+                )
+            },
+            status=503,
+        )
 
     return JsonResponse(analysis)
 

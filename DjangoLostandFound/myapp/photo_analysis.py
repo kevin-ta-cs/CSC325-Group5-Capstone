@@ -59,9 +59,15 @@ class PhotoAnalysisError(Exception):
 
 def _read_valid_image(uploaded_image):
     if not isinstance(uploaded_image, UploadedFile):
-        raise PhotoAnalysisError("Upload a valid JPEG, PNG, or WebP image.")
+        raise PhotoAnalysisError("Please choose a JPEG, PNG, or WebP image.")
     if uploaded_image.size > MAX_IMAGE_SIZE:
-        raise PhotoAnalysisError("The image must be 5 MB or smaller.")
+        raise PhotoAnalysisError(
+            "This image is too large. Choose an image that is 5 MB or smaller."
+        )
+    if uploaded_image.content_type not in IMAGE_MIME_TYPES.values():
+        raise PhotoAnalysisError(
+            "Unsupported image type. Choose a JPEG, PNG, or WebP image."
+        )
 
     original_position = uploaded_image.tell()
     try:
@@ -71,7 +77,9 @@ def _read_valid_image(uploaded_image):
         uploaded_image.seek(original_position)
 
     if not image_bytes or len(image_bytes) > MAX_IMAGE_SIZE:
-        raise PhotoAnalysisError("Upload a valid JPEG, PNG, or WebP image.")
+        raise PhotoAnalysisError(
+            "We couldn't read this image. Try a valid JPEG, PNG, or WebP file."
+        )
 
     try:
         with warnings.catch_warnings():
@@ -87,16 +95,18 @@ def _read_valid_image(uploaded_image):
         UnidentifiedImageError,
     ) as error:
         raise PhotoAnalysisError(
-            "Upload a valid JPEG, PNG, or WebP image."
+            "We couldn't read this image. Try a valid JPEG, PNG, or WebP file."
         ) from error
 
     mime_type = IMAGE_MIME_TYPES.get(image_format)
-    if (
-        mime_type is None
-        or uploaded_image.content_type != mime_type
-        or width * height > MAX_IMAGE_PIXELS
-    ):
-        raise PhotoAnalysisError("Upload a valid JPEG, PNG, or WebP image.")
+    if mime_type is None or uploaded_image.content_type != mime_type:
+        raise PhotoAnalysisError(
+            "Unsupported image type. Choose a JPEG, PNG, or WebP image."
+        )
+    if width * height > MAX_IMAGE_PIXELS:
+        raise PhotoAnalysisError(
+            "This image is too large to analyze. Choose a smaller image."
+        )
 
     return image_bytes, mime_type
 
@@ -139,10 +149,30 @@ def analyze_item_photo(uploaded_image):
                     response_schema=PHOTO_ANALYSIS_SCHEMA,
                 ),
             )
-    except (genai_errors.APIError, httpx2.HTTPError) as error:
+    except httpx2.TimeoutException as error:
+        logger.exception("Gemini photo analysis request timed out")
+        raise PhotoAnalysisError(
+            "Photo analysis is taking too long. Please try again."
+        ) from error
+    except genai_errors.APIError as error:
+        if error.code in (408, 504):
+            logger.exception("Gemini photo analysis request timed out")
+            raise PhotoAnalysisError(
+                "Photo analysis is taking too long. Please try again."
+            ) from error
         logger.exception("Gemini photo analysis request failed")
         raise PhotoAnalysisError(
-            "AI photo analysis is temporarily unavailable."
+            "Photo analysis is temporarily unavailable. Please try again."
+        ) from error
+    except httpx2.HTTPError as error:
+        logger.exception("Gemini photo analysis request failed")
+        raise PhotoAnalysisError(
+            "Photo analysis is temporarily unavailable. Please try again."
+        ) from error
+    except Exception as error:
+        logger.exception("Unexpected Gemini photo analysis failure")
+        raise PhotoAnalysisError(
+            "Photo analysis is temporarily unavailable. Please try again."
         ) from error
 
     try:

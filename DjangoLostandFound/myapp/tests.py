@@ -6,6 +6,7 @@ from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx2
 from PIL import Image
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -136,7 +137,10 @@ class PhotoAnalysisTests(SimpleTestCase):
 			content_type='text/plain',
 		)
 		with patch('myapp.photo_analysis.genai.Client') as gemini_client:
-			with self.assertRaises(PhotoAnalysisError):
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Unsupported image type. Choose a JPEG, PNG, or WebP image.',
+			):
 				analyze_item_photo(invalid_image)
 
 		gemini_client.assert_not_called()
@@ -150,9 +154,24 @@ class PhotoAnalysisTests(SimpleTestCase):
 		with patch('myapp.photo_analysis.genai.Client') as gemini_client:
 			with self.assertRaisesMessage(
 				PhotoAnalysisError,
-				'The image must be 5 MB or smaller.',
+				'This image is too large. Choose an image that is 5 MB or smaller.',
 			):
 				analyze_item_photo(large_image)
+
+		gemini_client.assert_not_called()
+
+	def test_corrupted_image_is_rejected_with_friendly_message(self):
+		corrupted_image = SimpleUploadedFile(
+			'item.png',
+			b'not actually an image',
+			content_type='image/png',
+		)
+		with patch('myapp.photo_analysis.genai.Client') as gemini_client:
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				"We couldn't read this image. Try a valid JPEG, PNG, or WebP file.",
+			):
+				analyze_item_photo(corrupted_image)
 
 		gemini_client.assert_not_called()
 
@@ -258,9 +277,76 @@ class PhotoAnalysisTests(SimpleTestCase):
 			)
 			with self.assertRaisesMessage(
 				PhotoAnalysisError,
-				'AI photo analysis is temporarily unavailable.',
+				'Photo analysis is temporarily unavailable. Please try again.',
 			):
 				analyze_item_photo(self.create_image())
+
+	def test_gemini_timeout_becomes_friendly_timeout_error(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				httpx2.TimeoutException('private timeout details')
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is taking too long. Please try again.',
+			) as raised:
+				analyze_item_photo(self.create_image())
+
+		self.assertNotIn('private timeout details', str(raised.exception))
+
+	def test_gemini_gateway_timeout_becomes_friendly_timeout_error(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				genai_errors.APIError(504, {'error': 'private timeout details'})
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is taking too long. Please try again.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_gemini_network_error_becomes_friendly_unavailable_error(self):
+		request = httpx2.Request('POST', 'https://example.test')
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				httpx2.ConnectError('private network detail', request=request)
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is temporarily unavailable. Please try again.',
+			) as raised:
+				analyze_item_photo(self.create_image())
+
+		self.assertNotIn('private network detail', str(raised.exception))
+
+	def test_unexpected_gemini_exception_is_not_exposed(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				RuntimeError('private server detail')
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is temporarily unavailable. Please try again.',
+			) as raised:
+				analyze_item_photo(self.create_image())
+
+		self.assertNotIn('private server detail', str(raised.exception))
 
 	def test_gemini_client_stays_open_during_image_analysis_and_closes_afterward(self):
 		client_transports = []
@@ -422,7 +508,7 @@ class PhotoAnalysisEndpointTests(TestCase):
 		with patch(
 			'myapp.views.analyze_item_photo',
 			side_effect=PhotoAnalysisError(
-				'Upload a valid JPEG, PNG, or WebP image.'
+				"We couldn't read this image. Try a valid JPEG, PNG, or WebP file."
 			),
 		):
 			response = self.client.post(
@@ -433,7 +519,12 @@ class PhotoAnalysisEndpointTests(TestCase):
 		self.assertEqual(response.status_code, 400)
 		self.assertEqual(
 			response.json(),
-			{'error': 'Upload a valid JPEG, PNG, or WebP image.'},
+			{
+				'error': (
+					"We couldn't read this image. "
+					"Try a valid JPEG, PNG, or WebP file."
+				)
+			},
 		)
 		self.assertFalse(FoundItem.objects.exists())
 
@@ -443,7 +534,7 @@ class PhotoAnalysisEndpointTests(TestCase):
 		with patch(
 			'myapp.views.analyze_item_photo',
 			side_effect=PhotoAnalysisError(
-				'AI photo analysis is temporarily unavailable.'
+				'Photo analysis is temporarily unavailable. Please try again.'
 			),
 		):
 			response = self.client.post(
@@ -454,10 +545,58 @@ class PhotoAnalysisEndpointTests(TestCase):
 		self.assertEqual(response.status_code, 503)
 		self.assertEqual(
 			response.json(),
-			{'error': 'AI photo analysis is temporarily unavailable.'},
+			{
+				'error': (
+					'Photo analysis is temporarily unavailable. Please try again.'
+				)
+			},
 		)
 		self.assertFalse(FoundItem.objects.exists())
 
+	def test_photo_analysis_endpoint_returns_gateway_timeout_without_details(self):
+		self.client.force_login(self.create_user())
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			side_effect=PhotoAnalysisError(
+				'Photo analysis is taking too long. Please try again.'
+			),
+		):
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 504)
+		self.assertEqual(
+			response.json(),
+			{'error': 'Photo analysis is taking too long. Please try again.'},
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_hides_unexpected_exception_details(self):
+		self.client.force_login(self.create_user())
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			side_effect=RuntimeError('private server detail'),
+		):
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 503)
+		self.assertEqual(
+			response.json(),
+			{
+				'error': (
+					'Photo analysis is temporarily unavailable. Please try again.'
+				)
+			},
+		)
+		self.assertNotIn('private server detail', response.content.decode())
+		self.assertFalse(FoundItem.objects.exists())
 	def test_photo_analysis_endpoint_returns_json_405_for_other_methods(self):
 		self.client.force_login(self.create_user())
 
@@ -1389,6 +1528,12 @@ class FoundItemReportTests(TestCase):
 				self.assertContains(response, 'photoButton.disabled=false')
 				self.assertContains(response, '"X-CSRFToken":csrf?.value||""')
 				self.assertContains(response, 'photoPreview.textContent="Analyzing photo..."')
+				self.assertContains(response, 'Select a photo first, then try analyzing it.')
+				self.assertContains(response, 'typeof data?.error==="string"?data.error')
+				self.assertContains(response, 'error instanceof TypeError')
+				self.assertContains(response, 'Check your connection and try again.')
+				self.assertContains(response, 'finally{if(requestId===photoAnalysisRequest)photoButton.disabled=false;}')
+				self.assertContains(response, 'if(requestId!==photoAnalysisRequest)return;')
 				self.assertNotContains(response, 'innerHTML')
 				self.assertEqual(response.content.count(b'name="image"'), 1)
 
