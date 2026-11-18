@@ -981,6 +981,22 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'type="time"')
 		self.assertContains(response, 'enctype="multipart/form-data"')
 		self.assertContains(response, 'name="image"')
+		self.assertContains(
+			response,
+			'<button class="photo-analysis-button" type="button" data-photo-analysis-url="/report/photo-analysis/">Analyze Photo with AI</button>',
+			html=True,
+		)
+		self.assertContains(response, 'data-photo-analysis-preview')
+		self.assertContains(response, 'new FormData()')
+		self.assertContains(response, 'formData.append("image",image)')
+		self.assertContains(response, '"X-CSRFToken":csrf?.value||""')
+		self.assertContains(response, 'photoButton.disabled=true')
+		self.assertContains(response, 'Analyzing photo...')
+		self.assertContains(response, '["Item name",data.item_name]')
+		self.assertContains(response, '["Category",data.category]')
+		self.assertContains(response, '["Color",data.color]')
+		self.assertContains(response, '["Description",data.description]')
+		self.assertContains(response, 'photoButton.disabled=false')
 		self.assertContains(response, 'New images stay private until an admin approves them.')
 		self.assertContains(response, 'data-report-only="lost"')
 		self.assertContains(response, 'data-match-url="/report/lost/matches/"')
@@ -1122,6 +1138,11 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'No possible matches were found.')
 		self.assertContains(response, 'name="color"')
 		self.assertContains(response, 'values.set("report_type","lost")')
+		self.assertContains(
+			response,
+			'<button class="photo-analysis-button" type="button" data-photo-analysis-url="/report/photo-analysis/">Analyze Photo with AI</button>',
+			html=True,
+		)
 		self.assertContains(response, 'Campus building')
 		self.assertContains(response, 'Date lost')
 		self.assertContains(response, 'Specific area')

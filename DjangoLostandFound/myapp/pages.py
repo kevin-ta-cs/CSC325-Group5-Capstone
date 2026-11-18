@@ -1716,6 +1716,12 @@ FOUND_ITEM_PAGE = """<!doctype html>
     }
     body.theme-dark .photo-analysis-button { border-color: #66d8c6; color: #8ce8d8; }
     .photo-analysis-button:hover { background: rgba(8,124,112,.08); }
+    .photo-analysis-button:disabled { cursor: wait; opacity: .7; }
+    .photo-analysis-preview { margin-top: 10px; color: var(--muted); }
+    .photo-analysis-preview:empty { display: none; }
+    .photo-analysis-preview dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0 0; }
+    .photo-analysis-preview dt { font-weight: 750; }
+    .photo-analysis-preview dd { margin: 0; }
     .match-results { grid-column: 1 / -1; }
     .match-results:empty { display: none; }
     .match-result { margin: 0 0 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; }
@@ -1978,8 +1984,10 @@ def found_item_page(request, form, editing=False):
             report_type=report_type,
         ),
         format_html(
-            '{}<button class="photo-analysis-button" type="button">'
-            'Analyze Photo with AI</button>',
+            '{}<button class="photo-analysis-button" type="button" '
+            'data-photo-analysis-url="{}">Analyze Photo with AI</button>'
+            '<div class="photo-analysis-preview" data-photo-analysis-preview '
+            'aria-live="polite"></div>',
             _found_item_field(
                 form,
                 "image",
@@ -1987,6 +1995,7 @@ def found_item_page(request, form, editing=False):
                 full_width=True,
                 report_type=report_type,
             ),
+            reverse("analyze_uploaded_item_photo"),
         ),
         _found_item_field(
             form,
@@ -2051,6 +2060,53 @@ def found_item_page(request, form, editing=False):
                 '<script>(function(){'
                 'const form=document.querySelector(".report-card form");'
                 'if(!form)return;'
+                'const photoButton=form.querySelector(".photo-analysis-button");'
+                'const photoPreview=form.querySelector("[data-photo-analysis-preview]");'
+                'if(photoButton&&photoPreview){'
+                'photoButton.addEventListener("click",async()=>{'
+                'const imageInput=form.querySelector("input[type=file][name=image]");'
+                'const image=imageInput?.files?.[0];'
+                'if(!image){'
+                'photoPreview.textContent="Select a photo first, then try analyzing it.";'
+                'return;'
+                '}'
+                'const formData=new FormData();'
+                'formData.append("image",image);'
+                'const csrf=form.querySelector("[name=csrfmiddlewaretoken]");'
+                'photoButton.disabled=true;'
+                'photoPreview.textContent="Analyzing photo...";'
+                'try{'
+                'const response=await fetch(photoButton.dataset.photoAnalysisUrl,{'
+                'method:"POST",credentials:"same-origin",'
+                'headers:{"X-CSRFToken":csrf?.value||"","Accept":"application/json"},'
+                'body:formData'
+                '});'
+                'let data;'
+                'try{data=await response.json();}'
+                'catch(error){throw new Error("We couldn’t analyze this photo. Please try again.");}'
+                'if(!response.ok){'
+                'throw new Error(data.error||"We couldn’t analyze this photo. Please try again.");'
+                '}'
+                'photoPreview.replaceChildren();'
+                'const heading=document.createElement("strong");'
+                'heading.textContent="Photo analysis preview";'
+                'const details=document.createElement("dl");'
+                '[["Item name",data.item_name],["Category",data.category],'
+                '["Color",data.color],["Description",data.description]].forEach(([label,value])=>{'
+                'const term=document.createElement("dt");'
+                'term.textContent=label;'
+                'const detail=document.createElement("dd");'
+                'detail.textContent=value||"Not identified";'
+                'details.append(term,detail);'
+                '});'
+                'photoPreview.append(heading,details);'
+                '}catch(error){'
+                'photoPreview.textContent=error instanceof TypeError'
+                '?"We couldn’t reach photo analysis. Check your connection and try again."'
+                ':error.message;'
+                '}finally{photoButton.disabled=false;}'
+                '});'
+                '}'
                 'const typeInput=form.querySelector("[name=report_type]");'
                 'const buttons=document.querySelectorAll("[data-report-type]");'
                 'if(!typeInput||!buttons.length)return;'
