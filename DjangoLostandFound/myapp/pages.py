@@ -1723,6 +1723,16 @@ FOUND_ITEM_PAGE = """<!doctype html>
     .photo-analysis-preview dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0 0; }
     .photo-analysis-preview dt { font-weight: 750; }
     .photo-analysis-preview dd { margin: 0; }
+    .photo-analysis-item { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+    .photo-analysis-item.selected { border-color: #087c70; background: rgba(8,124,112,.08); }
+    body.theme-dark .photo-analysis-item.selected { border-color: #66d8c6; background: rgba(102,216,198,.1); }
+    .photo-analysis-select-button {
+      margin-top: 10px; padding: 8px 12px; border: 1px solid #087c70;
+      border-radius: 10px; background: transparent; color: #087c70;
+      font-weight: 750; cursor: pointer;
+    }
+    body.theme-dark .photo-analysis-select-button { border-color: #66d8c6; color: #8ce8d8; }
+    .photo-analysis-item.selected .photo-analysis-select-button { background: var(--action-green); color: #fff; }
     .match-results { grid-column: 1 / -1; }
     .match-results:empty { display: none; }
     .match-result { margin: 0 0 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; }
@@ -2104,8 +2114,10 @@ def found_item_page(request, form, editing=False):
                 'heading.textContent=data.items.length===1'
                 '?"Photo analysis preview":`${data.items.length} items detected`;'
                 'photoPreview.append(heading);'
+                'let selectedItemSection=null;'
                 'data.items.forEach((item,index)=>{'
                 'const itemSection=document.createElement("section");'
+                'itemSection.className="photo-analysis-item";'
                 'if(data.items.length>1){'
                 'const itemHeading=document.createElement("h3");'
                 'itemHeading.textContent=`Item ${index+1}`;'
@@ -2120,7 +2132,20 @@ def found_item_page(request, form, editing=False):
                 'detail.textContent=typeof value==="string"&&value.trim()?value:"Not identified";'
                 'details.append(term,detail);'
                 '});'
-                'itemSection.append(details);'
+                'const selectButton=document.createElement("button");'
+                'selectButton.type="button";'
+                'selectButton.className="photo-analysis-select-button";'
+                'selectButton.textContent="Select This Item";'
+                'selectButton.addEventListener("click",()=>{'
+                'if(selectedItemSection&&selectedItemSection!==itemSection){'
+                'selectedItemSection.classList.remove("selected");'
+                'selectedItemSection.querySelector("button").textContent="Select This Item";'
+                '}'
+                'itemSection.classList.add("selected");'
+                'selectButton.textContent="Selected";'
+                'selectedItemSection=itemSection;'
+                '});'
+                'itemSection.append(details,selectButton);'
                 'photoPreview.append(itemSection);'
                 '});'
                 '}catch(error){'

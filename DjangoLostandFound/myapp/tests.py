@@ -1349,9 +1349,18 @@ class FoundItemReportTests(TestCase):
 				self.assertContains(response, '["Category",item.category]')
 				self.assertContains(response, '["Color",item.color]')
 				self.assertContains(response, '["Description",item.description]')
+				self.assertContains(response, 'itemSection.className="photo-analysis-item"')
+				self.assertContains(response, 'selectButton.type="button"')
+				self.assertContains(response, 'selectButton.textContent="Select This Item"')
+				self.assertContains(response, 'selectButton.textContent="Selected"')
+				self.assertContains(response, 'selectedItemSection.classList.remove("selected")')
+				self.assertContains(response, 'itemSection.classList.add("selected")')
+				self.assertContains(response, '.photo-analysis-item.selected')
 				self.assertContains(response, 'photoButton.disabled=true')
 				self.assertContains(response, 'photoButton.disabled=false')
 				self.assertContains(response, '"X-CSRFToken":csrf?.value||""')
+				self.assertContains(response, 'photoPreview.textContent="Analyzing photo..."')
+				self.assertNotContains(response, 'innerHTML')
 				self.assertEqual(response.content.count(b'name="image"'), 1)
 
 		response = self.client.post(
