@@ -10,7 +10,7 @@ from PIL import Image
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from google import genai
 from google.genai import errors as genai_errors
@@ -20,9 +20,181 @@ from .forms import FoundItemForm
 from .matching import MatchingError, find_possible_matches
 from .models import FoundItem, FoundItemInquiry
 from .pages import REPORTS
+from .photo_analysis import (
+	ALLOWED_CATEGORIES,
+	MAX_IMAGE_SIZE,
+	PhotoAnalysisError,
+	analyze_item_photo,
+)
 
 User = get_user_model()
 GeminiClient = genai.Client
+
+
+class PhotoAnalysisTests(SimpleTestCase):
+	def create_image(self, *, name='item.png', content_type='image/png'):
+		image_data = BytesIO()
+		Image.new('RGB', (2, 2), color='blue').save(image_data, format='PNG')
+		return SimpleUploadedFile(name, image_data.getvalue(), content_type=content_type)
+
+	def mock_response(self, gemini_client, payload):
+		gemini_client.return_value.__enter__.return_value = (
+			gemini_client.return_value
+		)
+		gemini_client.return_value.models.generate_content.return_value = (
+			SimpleNamespace(text=json.dumps(payload))
+		)
+
+	def test_analyze_photo_returns_structured_visible_item_details(self):
+		expected = {
+			'item_name': 'Blue backpack',
+			'category': 'Bags & Luggage',
+			'color': 'Blue',
+			'description': 'A blue backpack with two visible front pockets.',
+		}
+		image = self.create_image()
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, expected)
+			result = analyze_item_photo(image)
+
+		self.assertEqual(result, expected)
+		gemini_client.assert_called_once_with(api_key='unit-test-key')
+		request = gemini_client.return_value.models.generate_content.call_args
+		self.assertEqual(request.kwargs['model'], 'gemini-3.5-flash-lite')
+		self.assertEqual(
+			request.kwargs['config'].response_schema['properties']['category']['enum'],
+			list(ALLOWED_CATEGORIES),
+		)
+		self.assertIn('Do not infer brands, ownership, locations, dates', request.kwargs['contents'][0])
+		image_part = request.kwargs['contents'][1]
+		self.assertEqual(image_part.inline_data.mime_type, 'image/png')
+		image.seek(0)
+		self.assertEqual(image_part.inline_data.data, image.read())
+
+	def test_invalid_image_type_is_rejected_without_calling_gemini(self):
+		invalid_image = SimpleUploadedFile(
+			'item.txt',
+			b'not an image',
+			content_type='text/plain',
+		)
+		with patch('myapp.photo_analysis.genai.Client') as gemini_client:
+			with self.assertRaises(PhotoAnalysisError):
+				analyze_item_photo(invalid_image)
+
+		gemini_client.assert_not_called()
+
+	def test_image_larger_than_limit_is_rejected_without_calling_gemini(self):
+		large_image = SimpleUploadedFile(
+			'large.png',
+			b'x' * (MAX_IMAGE_SIZE + 1),
+			content_type='image/png',
+		)
+		with patch('myapp.photo_analysis.genai.Client') as gemini_client:
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'The image must be 5 MB or smaller.',
+			):
+				analyze_item_photo(large_image)
+
+		gemini_client.assert_not_called()
+
+	def test_invalid_category_from_gemini_is_rejected(self):
+		response = {
+			'item_name': 'Blue backpack',
+			'category': 'Personal Property',
+			'color': 'Blue',
+			'description': 'A blue backpack.',
+		}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, response)
+			with self.assertRaises(PhotoAnalysisError):
+				analyze_item_photo(self.create_image())
+
+	def test_malformed_gemini_json_is_rejected(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = (
+				gemini_client.return_value
+			)
+			gemini_client.return_value.models.generate_content.return_value = (
+				SimpleNamespace(text='not JSON')
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis returned an invalid response.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_missing_api_key_is_reported_without_calling_gemini(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': ''}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis is not configured.',
+			):
+				analyze_item_photo(self.create_image())
+
+		gemini_client.assert_not_called()
+
+	def test_gemini_api_error_becomes_friendly_photo_analysis_error(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = (
+				gemini_client.return_value
+			)
+			gemini_client.return_value.models.generate_content.side_effect = (
+				genai_errors.APIError(503, {'error': 'service unavailable'})
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis is temporarily unavailable.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_gemini_client_stays_open_during_image_analysis_and_closes_afterward(self):
+		client_transports = []
+
+		def create_client(**kwargs):
+			client = GeminiClient(**kwargs)
+			client_transports.append(client._api_client._httpx_client)
+			return client
+
+		def generate_content(models, **kwargs):
+			if models._api_client._httpx_client.is_closed:
+				raise RuntimeError(
+					"Cannot send a request, as the client has been closed."
+				)
+			return SimpleNamespace(
+				text=json.dumps({
+					'item_name': 'Blue backpack',
+					'category': 'Bags & Luggage',
+					'color': 'Blue',
+					'description': 'A blue backpack.',
+				})
+			)
+
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client', side_effect=create_client),
+			patch.object(Models, 'generate_content', new=generate_content),
+		):
+			result = analyze_item_photo(self.create_image())
+
+		self.assertEqual(result['item_name'], 'Blue backpack')
+		self.assertEqual(len(client_transports), 1)
+		self.assertTrue(client_transports[0].is_closed)
 
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
