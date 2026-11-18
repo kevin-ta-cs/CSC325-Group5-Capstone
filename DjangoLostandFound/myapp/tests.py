@@ -10,7 +10,7 @@ from PIL import Image
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from google import genai
 from google.genai import errors as genai_errors
@@ -195,6 +195,170 @@ class PhotoAnalysisTests(SimpleTestCase):
 		self.assertEqual(result['item_name'], 'Blue backpack')
 		self.assertEqual(len(client_transports), 1)
 		self.assertTrue(client_transports[0].is_closed)
+
+
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+class PhotoAnalysisEndpointTests(TestCase):
+	password = 'CampusFind!2026Strong'
+
+	def create_user(self):
+		return User.objects.create_user(
+			username='photo-endpoint-user',
+			email='photo-endpoint-user@example.com',
+			password=self.password,
+		)
+
+	def create_image(self):
+		image_data = BytesIO()
+		Image.new('RGB', (2, 2), color='blue').save(image_data, format='PNG')
+		return SimpleUploadedFile(
+			'item.png',
+			image_data.getvalue(),
+			content_type='image/png',
+		)
+
+	def test_photo_analysis_endpoint_requires_login(self):
+		response = self.client.post(
+			reverse('analyze_uploaded_item_photo'),
+			{'image': self.create_image()},
+		)
+
+		self.assertRedirects(
+			response,
+			f'{reverse("login")}?next={reverse("analyze_uploaded_item_photo")}',
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_returns_structured_json_without_saving(self):
+		self.client.force_login(self.create_user())
+		analysis = {
+			'item_name': 'Blue backpack',
+			'category': 'Bags & Luggage',
+			'color': 'Blue',
+			'description': 'A blue backpack with two front pockets.',
+		}
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			return_value=analysis,
+		) as analyze_photo:
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json(), analysis)
+		analyze_photo.assert_called_once()
+		self.assertEqual(
+			analyze_photo.call_args.args[0].name,
+			'item.png',
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_reports_missing_image_as_json(self):
+		self.client.force_login(self.create_user())
+
+		with patch('myapp.views.analyze_item_photo') as analyze_photo:
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{},
+			)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertEqual(
+			response.json(),
+			{'error': 'An image upload is required.'},
+		)
+		analyze_photo.assert_not_called()
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_reports_invalid_image_as_json(self):
+		self.client.force_login(self.create_user())
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			side_effect=PhotoAnalysisError(
+				'Upload a valid JPEG, PNG, or WebP image.'
+			),
+		):
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertEqual(
+			response.json(),
+			{'error': 'Upload a valid JPEG, PNG, or WebP image.'},
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_reports_gemini_failure_without_details(self):
+		self.client.force_login(self.create_user())
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			side_effect=PhotoAnalysisError(
+				'AI photo analysis is temporarily unavailable.'
+			),
+		):
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 503)
+		self.assertEqual(
+			response.json(),
+			{'error': 'AI photo analysis is temporarily unavailable.'},
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_returns_json_405_for_other_methods(self):
+		self.client.force_login(self.create_user())
+
+		response = self.client.get(reverse('analyze_uploaded_item_photo'))
+
+		self.assertEqual(response.status_code, 405)
+		self.assertEqual(response['Allow'], 'POST')
+		self.assertEqual(
+			response.json(),
+			{'error': 'Only POST requests are supported.'},
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_enforces_csrf(self):
+		client = Client(enforce_csrf_checks=True)
+		client.force_login(self.create_user())
+		form_response = client.get(reverse('found_report'), {'type': 'lost'})
+		csrf_token = form_response.cookies['csrftoken'].value
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			return_value={
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+				'description': 'A blue backpack.',
+			},
+		) as analyze_photo:
+			response = client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+				HTTP_X_CSRFTOKEN=csrf_token,
+			)
+
+		self.assertEqual(response.status_code, 200)
+		analyze_photo.assert_called_once()
+		self.assertFalse(FoundItem.objects.exists())
+
+		response = client.post(
+			reverse('analyze_uploaded_item_photo'),
+			{'image': self.create_image()},
+		)
+		self.assertEqual(response.status_code, 403)
+		self.assertFalse(FoundItem.objects.exists())
 
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
