@@ -1709,6 +1709,13 @@ FOUND_ITEM_PAGE = """<!doctype html>
     }
     body.theme-dark .match-button { border-color: #66d8c6; color: #8ce8d8; }
     .match-button:disabled { cursor: wait; opacity: .7; }
+    .photo-analysis-button {
+      margin-top: 10px; padding: 9px 14px; border: 1px solid #087c70;
+      border-radius: 10px; background: transparent; color: #087c70;
+      font-weight: 750; cursor: pointer;
+    }
+    body.theme-dark .photo-analysis-button { border-color: #66d8c6; color: #8ce8d8; }
+    .photo-analysis-button:hover { background: rgba(8,124,112,.08); }
     .match-results { grid-column: 1 / -1; }
     .match-results:empty { display: none; }
     .match-result { margin: 0 0 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; }
@@ -1970,7 +1977,17 @@ def found_item_page(request, form, editing=False):
             full_width=True,
             report_type=report_type,
         ),
-        _found_item_field(form, "image", "Item image", full_width=True, report_type=report_type),
+        format_html(
+            '{}<button class="photo-analysis-button" type="button">'
+            'Analyze Photo with AI</button>',
+            _found_item_field(
+                form,
+                "image",
+                "Item image",
+                full_width=True,
+                report_type=report_type,
+            ),
+        ),
         _found_item_field(
             form,
             "ownership_question",
