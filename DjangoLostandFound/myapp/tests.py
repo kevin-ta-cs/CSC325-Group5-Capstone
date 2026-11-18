@@ -987,6 +987,11 @@ class FoundItemReportTests(TestCase):
 			html=True,
 		)
 		self.assertContains(response, 'data-photo-analysis-preview')
+		self.assertLess(
+			response.content.index(b'class="photo-analysis-section"'),
+			response.content.index(b'name="item_name"'),
+		)
+		self.assertEqual(response.content.count(b'name="image"'), 1)
 		self.assertContains(response, 'new FormData()')
 		self.assertContains(response, 'formData.append("image",image)')
 		self.assertContains(response, '"X-CSRFToken":csrf?.value||""')
@@ -1143,6 +1148,11 @@ class FoundItemReportTests(TestCase):
 			'<button class="photo-analysis-button" type="button" data-photo-analysis-url="/report/photo-analysis/">Analyze Photo with AI</button>',
 			html=True,
 		)
+		self.assertLess(
+			response.content.index(b'class="photo-analysis-section"'),
+			response.content.index(b'name="item_name"'),
+		)
+		self.assertEqual(response.content.count(b'name="image"'), 1)
 		self.assertContains(response, 'Campus building')
 		self.assertContains(response, 'Date lost')
 		self.assertContains(response, 'Specific area')

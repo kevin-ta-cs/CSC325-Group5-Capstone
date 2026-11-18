@@ -1717,6 +1717,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
     body.theme-dark .photo-analysis-button { border-color: #66d8c6; color: #8ce8d8; }
     .photo-analysis-button:hover { background: rgba(8,124,112,.08); }
     .photo-analysis-button:disabled { cursor: wait; opacity: .7; }
+    .photo-analysis-section { grid-column: 1 / -1; }
     .photo-analysis-preview { margin-top: 10px; color: var(--muted); }
     .photo-analysis-preview:empty { display: none; }
     .photo-analysis-preview dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0 0; }
@@ -1820,6 +1821,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
           __CSRF_INPUT__
           __REPORT_TYPE_INPUT__
           __ERROR_SUMMARY__
+          __PHOTO_ANALYSIS_SECTION__
           __FORM_FIELDS__
           <p class="form-footer">Your report will be listed with its category, campus building, and date. Found-item reports also include the time found.</p>
           __MATCH_BUTTON__
@@ -1955,8 +1957,23 @@ def found_item_page(request, form, editing=False):
         if form.non_field_errors()
         else ""
     )
+    photo_analysis_section = format_html(
+        '<div class="photo-analysis-section">{}'
+        '<button class="photo-analysis-button" type="button" '
+        'data-photo-analysis-url="{}">Analyze Photo with AI</button>'
+        '<div class="photo-analysis-preview" data-photo-analysis-preview '
+        'aria-live="polite"></div></div>',
+        _found_item_field(
+            form,
+            "image",
+            "Item image",
+            full_width=True,
+            report_type=report_type,
+        ),
+        reverse("analyze_uploaded_item_photo"),
+    )
     form_fields = format_html(
-        "{}{}{}{}{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}{}{}",
         _found_item_field(form, "item_name", "Item name", full_width=True, report_type=report_type),
         _found_item_field(form, "color", "Color (optional)", report_type=report_type),
         _found_item_field(form, "category", "Category"),
@@ -1982,20 +1999,6 @@ def found_item_page(request, form, editing=False):
             "Description (optional)",
             full_width=True,
             report_type=report_type,
-        ),
-        format_html(
-            '{}<button class="photo-analysis-button" type="button" '
-            'data-photo-analysis-url="{}">Analyze Photo with AI</button>'
-            '<div class="photo-analysis-preview" data-photo-analysis-preview '
-            'aria-live="polite"></div>',
-            _found_item_field(
-                form,
-                "image",
-                "Item image",
-                full_width=True,
-                report_type=report_type,
-            ),
-            reverse("analyze_uploaded_item_photo"),
         ),
         _found_item_field(
             form,
@@ -2050,6 +2053,7 @@ def found_item_page(request, form, editing=False):
         ("__SUBMIT_LABEL__", "Save changes" if editing else f"Publish {type_label} item report"),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__ERROR_SUMMARY__", str(error_summary)),
+        ("__PHOTO_ANALYSIS_SECTION__", str(photo_analysis_section)),
         ("__FORM_FIELDS__", str(form_fields)),
         ("__NOTICES__", str(notices)),
         ("__YEAR__", str(date.today().year)),
