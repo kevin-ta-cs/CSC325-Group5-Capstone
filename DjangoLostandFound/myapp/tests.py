@@ -1349,6 +1349,26 @@ class FoundItemReportTests(TestCase):
 				self.assertContains(response, '["Category",item.category]')
 				self.assertContains(response, '["Color",item.color]')
 				self.assertContains(response, '["Description",item.description]')
+				self.assertContains(response, 'data-image-preview hidden')
+				self.assertContains(response, 'data-image-preview-image')
+				self.assertContains(response, 'Preview of selected item photo')
+				self.assertContains(response, 'URL.createObjectURL(image)')
+				self.assertContains(response, 'URL.revokeObjectURL(activeImagePreviewUrl)')
+				self.assertContains(response, 'imageInput.addEventListener("change"')
+				self.assertContains(response, 'imagePreviewElement.removeAttribute("src")')
+				self.assertContains(response, 'No image selected.')
+				self.assertContains(response, 'This image can’t be previewed.')
+				self.assertContains(response, 'max-height: 240px')
+				self.assertContains(response, 'object-fit: contain')
+				self.assertContains(response, 'photoAnalysisRequest+=1')
+				self.assertLess(
+					response.content.index(b'name="image"'),
+					response.content.index(b'data-image-preview hidden'),
+				)
+				self.assertLess(
+					response.content.index(b'data-image-preview hidden'),
+					response.content.index(b'class="photo-analysis-button"'),
+				)
 				self.assertContains(response, 'itemSection.className="photo-analysis-item"')
 				self.assertContains(response, 'selectButton.type="button"')
 				self.assertContains(response, 'selectButton.textContent="Select This Item"')

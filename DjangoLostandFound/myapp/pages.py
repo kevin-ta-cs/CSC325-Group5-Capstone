@@ -1718,6 +1718,16 @@ FOUND_ITEM_PAGE = """<!doctype html>
     .photo-analysis-button:hover { background: rgba(8,124,112,.08); }
     .photo-analysis-button:disabled { cursor: wait; opacity: .7; }
     .photo-analysis-section { grid-column: 1 / -1; }
+    .photo-image-preview {
+      margin-top: 10px; padding: 10px; border: 1px solid var(--line);
+      border-radius: 12px; background: var(--card);
+    }
+    .photo-image-preview img {
+      display: block; max-width: 100%; max-height: 240px; margin-inline: auto;
+      border-radius: 8px; object-fit: contain;
+    }
+    .photo-image-preview[hidden], .photo-image-preview img[hidden] { display: none; }
+    .photo-image-preview-message { margin: 0; color: var(--muted); font-size: .88rem; }
     .photo-analysis-preview { margin-top: 10px; color: var(--muted); }
     .photo-analysis-preview:empty { display: none; }
     .photo-analysis-preview dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0 0; }
@@ -1969,6 +1979,10 @@ def found_item_page(request, form, editing=False):
     )
     photo_analysis_section = format_html(
         '<div class="photo-analysis-section">{}'
+        '<div class="photo-image-preview" data-image-preview hidden>'
+        '<img data-image-preview-image alt="Preview of selected item photo" hidden>'
+        '<p class="photo-image-preview-message" data-image-preview-message '
+        'aria-live="polite"></p></div>'
         '<button class="photo-analysis-button" type="button" '
         'data-photo-analysis-url="{}">Analyze Photo with AI</button>'
         '<div class="photo-analysis-preview" data-photo-analysis-preview '
@@ -2077,14 +2091,55 @@ def found_item_page(request, form, editing=False):
                 'const photoButton=form.querySelector(".photo-analysis-button");'
                 'const photoPreview=form.querySelector("[data-photo-analysis-preview]");'
                 'if(photoButton&&photoPreview){'
-                'let lastAppliedValues=null;'
-                'photoButton.addEventListener("click",async()=>{'
                 'const imageInput=form.querySelector("input[type=file][name=image]");'
+                'const imagePreview=form.querySelector("[data-image-preview]");'
+                'const imagePreviewElement=form.querySelector("[data-image-preview-image]");'
+                'const imagePreviewMessage=form.querySelector("[data-image-preview-message]");'
+                'let activeImagePreviewUrl=null;'
+                'let photoAnalysisRequest=0;'
+                'let lastAppliedValues=null;'
+                'function revokeImagePreviewUrl(){'
+                'if(activeImagePreviewUrl){URL.revokeObjectURL(activeImagePreviewUrl);'
+                'activeImagePreviewUrl=null;}'
+                '}'
+                'if(imageInput&&imagePreview&&imagePreviewElement&&imagePreviewMessage){'
+                'imageInput.addEventListener("change",()=>{'
+                'photoAnalysisRequest+=1;'
+                'photoButton.disabled=false;'
+                'photoPreview.replaceChildren();'
+                'revokeImagePreviewUrl();'
+                'imagePreviewElement.removeAttribute("src");'
+                'imagePreviewElement.hidden=true;'
+                'imagePreview.hidden=false;'
+                'const image=imageInput.files?.[0];'
+                'if(!image){imagePreviewMessage.textContent="No image selected.";return;}'
+                'try{'
+                'const objectUrl=URL.createObjectURL(image);'
+                'activeImagePreviewUrl=objectUrl;'
+                'imagePreviewMessage.textContent="";'
+                'imagePreviewElement.onload=()=>{'
+                'if(activeImagePreviewUrl===objectUrl)imagePreviewElement.hidden=false;'
+                '};'
+                'imagePreviewElement.onerror=()=>{'
+                'if(activeImagePreviewUrl!==objectUrl)return;'
+                'revokeImagePreviewUrl();'
+                'imagePreviewElement.removeAttribute("src");'
+                'imagePreviewElement.hidden=true;'
+                'imagePreviewMessage.textContent="This image can’t be previewed. You can still try AI analysis or submit the report.";'
+                '};'
+                'imagePreviewElement.src=objectUrl;'
+                '}catch(error){'
+                'imagePreviewMessage.textContent="This image can’t be previewed. You can still try AI analysis or submit the report.";'
+                '}'
+                '});'
+                '}'
+                'photoButton.addEventListener("click",async()=>{'
                 'const image=imageInput?.files?.[0];'
                 'if(!image){'
                 'photoPreview.textContent="Select a photo first, then try analyzing it.";'
                 'return;'
                 '}'
+                'const requestId=++photoAnalysisRequest;'
                 'const formData=new FormData();'
                 'formData.append("image",image);'
                 'const csrf=form.querySelector("[name=csrfmiddlewaretoken]");'
@@ -2103,6 +2158,7 @@ def found_item_page(request, form, editing=False):
                 'if(!response.ok){'
                 'throw new Error(data.error||"We couldn’t analyze this photo. Please try again.");'
                 '}'
+                'if(requestId!==photoAnalysisRequest)return;'
                 'if(!Array.isArray(data.items)||!Number.isInteger(data.item_count)||'
                 'data.item_count!==data.items.length){'
                 'throw new Error("We couldn’t analyze this photo. Please try again.");'
@@ -2174,10 +2230,10 @@ def found_item_page(request, form, editing=False):
                 'photoPreview.append(itemSection);'
                 '});'
                 '}catch(error){'
-                'photoPreview.textContent=error instanceof TypeError'
+                'if(requestId===photoAnalysisRequest)photoPreview.textContent=error instanceof TypeError'
                 '?"We couldn’t reach photo analysis. Check your connection and try again."'
                 ':error.message;'
-                '}finally{photoButton.disabled=false;}'
+                '}finally{if(requestId===photoAnalysisRequest)photoButton.disabled=false;}'
                 '});'
                 '}'
                 'const typeInput=form.querySelector("[name=report_type]");'
