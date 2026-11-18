@@ -47,10 +47,13 @@ class PhotoAnalysisTests(SimpleTestCase):
 
 	def test_analyze_photo_returns_structured_visible_item_details(self):
 		expected = {
-			'item_name': 'Blue backpack',
-			'category': 'Bags & Luggage',
-			'color': 'Blue',
-			'description': 'A blue backpack with two visible front pockets.',
+			'item_count': 1,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+				'description': 'A blue backpack with two visible front pockets.',
+			}],
 		}
 		image = self.create_image()
 		with (
@@ -65,19 +68,66 @@ class PhotoAnalysisTests(SimpleTestCase):
 		request = gemini_client.return_value.models.generate_content.call_args
 		self.assertEqual(request.kwargs['model'], 'gemini-3.5-flash-lite')
 		self.assertEqual(
-			request.kwargs['config'].response_schema['properties']['category']['enum'],
+			request.kwargs['config'].response_schema['properties']['items']['items']
+			['properties']['category']['enum'],
 			list(ALLOWED_CATEGORIES),
 		)
 		prompt = request.kwargs['contents'][0]
-		self.assertIn('Describe only the item itself', prompt)
-		self.assertIn('ignore people, hands, the background', prompt)
+		self.assertIn('each distinct item', prompt)
+		self.assertIn('Ignore background objects, furniture, hands, people', prompt)
+		self.assertIn('Never combine multiple items into one description', prompt)
+		self.assertIn('empty array and item_count 0', prompt)
+		self.assertIn('an item-only description', prompt)
 		self.assertIn('clearly visible brand or logo', prompt)
 		self.assertIn('one concise sentence of about 10-20 words', prompt)
-		self.assertIn('Do not invent or infer details that are not clearly visible', prompt)
+		self.assertIn('Do not invent details that are not clearly visible', prompt)
 		image_part = request.kwargs['contents'][1]
 		self.assertEqual(image_part.inline_data.mime_type, 'image/png')
 		image.seek(0)
 		self.assertEqual(image_part.inline_data.data, image.read())
+
+	def test_analyze_photo_returns_zero_items_when_no_reportable_item_is_clear(self):
+		expected = {'item_count': 0, 'items': []}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, expected)
+			result = analyze_item_photo(self.create_image())
+
+		self.assertEqual(result, expected)
+
+	def test_analyze_photo_returns_multiple_items_separately(self):
+		expected = {
+			'item_count': 2,
+			'items': [
+				{
+					'item_name': 'Blue water bottle',
+					'category': 'Accessories',
+					'color': 'Blue',
+					'description': 'A blue reusable bottle with a black cap.',
+				},
+				{
+					'item_name': 'Silver key ring',
+					'category': 'Keys',
+					'color': 'Silver',
+					'description': 'A silver key ring holding three visible keys.',
+				},
+			],
+		}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, expected)
+			result = analyze_item_photo(self.create_image())
+
+		self.assertEqual(result, expected)
+		self.assertEqual(result['item_count'], len(result['items']))
+		self.assertNotEqual(
+			result['items'][0]['description'],
+			result['items'][1]['description'],
+		)
 
 	def test_invalid_image_type_is_rejected_without_calling_gemini(self):
 		invalid_image = SimpleUploadedFile(
@@ -108,10 +158,13 @@ class PhotoAnalysisTests(SimpleTestCase):
 
 	def test_invalid_category_from_gemini_is_rejected(self):
 		response = {
-			'item_name': 'Blue backpack',
-			'category': 'Personal Property',
-			'color': 'Blue',
-			'description': 'A blue backpack.',
+			'item_count': 1,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Personal Property',
+				'color': 'Blue',
+				'description': 'A blue backpack.',
+			}],
 		}
 		with (
 			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
@@ -119,6 +172,47 @@ class PhotoAnalysisTests(SimpleTestCase):
 		):
 			self.mock_response(gemini_client, response)
 			with self.assertRaises(PhotoAnalysisError):
+				analyze_item_photo(self.create_image())
+
+	def test_item_count_must_match_items_length(self):
+		response = {
+			'item_count': 2,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+				'description': 'A blue backpack.',
+			}],
+		}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, response)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis returned an invalid response.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_malformed_item_in_gemini_response_is_rejected(self):
+		response = {
+			'item_count': 1,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+			}],
+		}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, response)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis returned an invalid response.',
+			):
 				analyze_item_photo(self.create_image())
 
 	def test_malformed_gemini_json_is_rejected(self):
@@ -183,10 +277,13 @@ class PhotoAnalysisTests(SimpleTestCase):
 				)
 			return SimpleNamespace(
 				text=json.dumps({
-					'item_name': 'Blue backpack',
-					'category': 'Bags & Luggage',
-					'color': 'Blue',
-					'description': 'A blue backpack.',
+					'item_count': 1,
+					'items': [{
+						'item_name': 'Blue backpack',
+						'category': 'Bags & Luggage',
+						'color': 'Blue',
+						'description': 'A blue backpack.',
+					}],
 				})
 			)
 
@@ -197,7 +294,7 @@ class PhotoAnalysisTests(SimpleTestCase):
 		):
 			result = analyze_item_photo(self.create_image())
 
-		self.assertEqual(result['item_name'], 'Blue backpack')
+		self.assertEqual(result['items'][0]['item_name'], 'Blue backpack')
 		self.assertEqual(len(client_transports), 1)
 		self.assertTrue(client_transports[0].is_closed)
 
@@ -237,10 +334,13 @@ class PhotoAnalysisEndpointTests(TestCase):
 	def test_photo_analysis_endpoint_returns_structured_json_without_saving(self):
 		self.client.force_login(self.create_user())
 		analysis = {
-			'item_name': 'Blue backpack',
-			'category': 'Bags & Luggage',
-			'color': 'Blue',
-			'description': 'A blue backpack with two front pockets.',
+			'item_count': 1,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+				'description': 'A blue backpack with two front pockets.',
+			}],
 		}
 
 		with patch(
@@ -260,6 +360,44 @@ class PhotoAnalysisEndpointTests(TestCase):
 			'item.png',
 		)
 		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_returns_zero_and_multiple_item_shapes(self):
+		self.client.force_login(self.create_user())
+		analyses = [
+			{'item_count': 0, 'items': []},
+			{
+				'item_count': 2,
+				'items': [
+					{
+						'item_name': 'Blue water bottle',
+						'category': 'Accessories',
+						'color': 'Blue',
+						'description': 'A blue reusable bottle.',
+					},
+					{
+						'item_name': 'Silver key ring',
+						'category': 'Keys',
+						'color': 'Silver',
+						'description': 'A silver key ring with three keys.',
+					},
+				],
+			},
+		]
+
+		for analysis in analyses:
+			with self.subTest(item_count=analysis['item_count']):
+				with patch(
+					'myapp.views.analyze_item_photo',
+					return_value=analysis,
+				):
+					response = self.client.post(
+						reverse('analyze_uploaded_item_photo'),
+						{'image': self.create_image()},
+					)
+
+				self.assertEqual(response.status_code, 200)
+				self.assertEqual(response.json(), analysis)
+				self.assertFalse(FoundItem.objects.exists())
 
 	def test_photo_analysis_endpoint_reports_missing_image_as_json(self):
 		self.client.force_login(self.create_user())
@@ -342,10 +480,13 @@ class PhotoAnalysisEndpointTests(TestCase):
 		with patch(
 			'myapp.views.analyze_item_photo',
 			return_value={
-				'item_name': 'Blue backpack',
-				'category': 'Bags & Luggage',
-				'color': 'Blue',
-				'description': 'A blue backpack.',
+				'item_count': 1,
+				'items': [{
+					'item_name': 'Blue backpack',
+					'category': 'Bags & Luggage',
+					'color': 'Blue',
+					'description': 'A blue backpack.',
+				}],
 			},
 		) as analyze_photo:
 			response = client.post(
@@ -1002,10 +1143,24 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, '"X-CSRFToken":csrf?.value||""')
 		self.assertContains(response, 'photoButton.disabled=true')
 		self.assertContains(response, 'Analyzing photo...')
-		self.assertContains(response, '["Item name",data.item_name]')
-		self.assertContains(response, '["Category",data.category]')
-		self.assertContains(response, '["Color",data.color]')
-		self.assertContains(response, '["Description",data.description]')
+		self.assertContains(response, 'Array.isArray(data.items)')
+		self.assertContains(response, 'data.item_count!==data.items.length')
+		self.assertContains(
+			response,
+			'No clear items were detected. Upload a clearer photo or enter the report manually.',
+		)
+		self.assertContains(response, 'data.items.forEach((item,index)=>')
+		self.assertContains(response, '`${data.items.length} items detected`')
+		self.assertContains(response, '[["Item name",item.item_name]')
+		self.assertContains(response, '["Category",item.category]')
+		self.assertContains(response, '["Color",item.color]')
+		self.assertContains(response, '["Description",item.description]')
+		self.assertContains(response, 'term.textContent=label')
+		self.assertContains(
+			response,
+			'detail.textContent=typeof value==="string"&&value.trim()?value:"Not identified"',
+		)
+		self.assertNotContains(response, 'innerHTML')
 		self.assertContains(response, 'photoButton.disabled=false')
 		self.assertContains(response, 'New images stay private until an admin approves them.')
 		self.assertContains(response, 'data-report-only="lost"')
@@ -1169,6 +1324,35 @@ class FoundItemReportTests(TestCase):
 			html=True,
 		)
 		self.assertContains(response, 'name="report_type" value="lost"')
+
+	def test_photo_analysis_preview_supports_zero_one_multiple_items_for_both_report_types(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		for report_type in ('found', 'lost'):
+			with self.subTest(report_type=report_type):
+				response = self.client.get(
+					reverse('found_report'),
+					{'type': report_type},
+				)
+
+				self.assertContains(response, 'Array.isArray(data.items)')
+				self.assertContains(response, 'data.items.length===0')
+				self.assertContains(
+					response,
+					'No clear items were detected. Upload a clearer photo or enter the report manually.',
+				)
+				self.assertContains(response, 'data.items.length===1')
+				self.assertContains(response, '`${data.items.length} items detected`')
+				self.assertContains(response, 'data.items.forEach((item,index)=>')
+				self.assertContains(response, '["Item name",item.item_name]')
+				self.assertContains(response, '["Category",item.category]')
+				self.assertContains(response, '["Color",item.color]')
+				self.assertContains(response, '["Description",item.description]')
+				self.assertContains(response, 'photoButton.disabled=true')
+				self.assertContains(response, 'photoButton.disabled=false')
+				self.assertContains(response, '"X-CSRFToken":csrf?.value||""')
+				self.assertEqual(response.content.count(b'name="image"'), 1)
 
 		response = self.client.post(
 			reverse('found_report'),

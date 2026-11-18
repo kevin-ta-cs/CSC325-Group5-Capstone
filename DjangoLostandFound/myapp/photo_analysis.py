@@ -31,15 +31,25 @@ ALLOWED_CATEGORIES = tuple(
 PHOTO_ANALYSIS_SCHEMA = {
     "type": "OBJECT",
     "properties": {
-        "item_name": {"type": "STRING"},
-        "category": {
-            "type": "STRING",
-            "enum": list(ALLOWED_CATEGORIES),
+        "item_count": {"type": "INTEGER"},
+        "items": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "item_name": {"type": "STRING"},
+                    "category": {
+                        "type": "STRING",
+                        "enum": list(ALLOWED_CATEGORIES),
+                    },
+                    "color": {"type": "STRING"},
+                    "description": {"type": "STRING"},
+                },
+                "required": ["item_name", "category", "color", "description"],
+            },
         },
-        "color": {"type": "STRING"},
-        "description": {"type": "STRING"},
     },
-    "required": ["item_name", "category", "color", "description"],
+    "required": ["item_count", "items"],
 }
 
 
@@ -99,16 +109,20 @@ def analyze_item_photo(uploaded_image):
 
     prompt = (
         "Analyze the uploaded item photo for a campus lost-and-found report. "
-        "Return a concise visible item name, one category from the allowed "
-        "category list, its visible color, and an item-only description. Describe "
-        "only the item itself; ignore people, hands, the background, and how the "
-        "item is held or photographed. Focus on the item type, visible color, "
-        "clearly visible brand or logo, patterns, and other distinguishing "
-        "features. Keep the description to one concise sentence of about 10-20 "
-        "words. Do not invent or infer details that are not clearly visible, "
-        "including brands, ownership, locations, or dates. If a detail is unclear, "
-        "leave its string empty. Choose the closest category only when the "
-        "visible item supports it.\n"
+        "Identify each distinct item that a student could reasonably report as "
+        "lost or found. Ignore background objects, furniture, hands, people, and "
+        "other incidental details unless clearly the intended reportable item. "
+        "Return an items array with one separate entry per reportable item and an "
+        "item_count equal to the array length. Never combine multiple items into "
+        "one description. If exactly one item is reportable, return one entry. If "
+        "none is clear, return an empty array and item_count 0. For each item, "
+        "return its visible name, one category from the allowed category list, "
+        "visible color, and an item-only description. Focus on item type, color, "
+        "clearly visible brand or logo, patterns, and distinguishing features. "
+        "Keep each description to one concise sentence of about 10-20 words. Do "
+        "not invent details that are not clearly visible, including brands, "
+        "ownership, locations, or dates. Leave unclear string details empty. "
+        "Choose a category only when supported by the visible item.\n"
         f"Allowed categories: {', '.join(ALLOWED_CATEGORIES)}"
     )
 
@@ -138,23 +152,41 @@ def analyze_item_photo(uploaded_image):
             "AI photo analysis returned an invalid response."
         ) from error
 
-    if not isinstance(result, dict):
+    if not isinstance(result, dict) or set(result) != {"item_count", "items"}:
         raise PhotoAnalysisError("AI photo analysis returned an invalid response.")
 
     fields = ("item_name", "category", "color", "description")
-    if set(result) != set(fields):
-        raise PhotoAnalysisError("AI photo analysis returned an invalid response.")
-
-    if any(not isinstance(result[field], str) for field in fields):
-        raise PhotoAnalysisError("AI photo analysis returned an invalid response.")
-
-    result = {field: result[field].strip() for field in fields}
+    items = result["items"]
+    item_count = result["item_count"]
     if (
-        not result["item_name"]
-        or result["category"] not in ALLOWED_CATEGORIES
-        or len(result["item_name"]) > 120
-        or len(result["color"]) > 64
+        isinstance(item_count, bool)
+        or not isinstance(item_count, int)
+        or not isinstance(items, list)
+        or item_count != len(items)
     ):
         raise PhotoAnalysisError("AI photo analysis returned an invalid response.")
 
-    return result
+    normalized_items = []
+    for item in items:
+        if (
+            not isinstance(item, dict)
+            or set(item) != set(fields)
+            or any(not isinstance(item[field], str) for field in fields)
+        ):
+            raise PhotoAnalysisError(
+                "AI photo analysis returned an invalid response."
+            )
+
+        normalized_item = {field: item[field].strip() for field in fields}
+        if (
+            not normalized_item["item_name"]
+            or normalized_item["category"] not in ALLOWED_CATEGORIES
+            or len(normalized_item["item_name"]) > 120
+            or len(normalized_item["color"]) > 64
+        ):
+            raise PhotoAnalysisError(
+                "AI photo analysis returned an invalid response."
+            )
+        normalized_items.append(normalized_item)
+
+    return {"item_count": item_count, "items": normalized_items}
