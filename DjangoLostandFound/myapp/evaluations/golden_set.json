@@ -1,0 +1,246 @@
+
+{
+  "description": "Golden test set for Campus Lost & Found AI matching",
+  "tests": [
+    {
+      "id": "G01",
+      "lost_item": {
+        "item_name": "Blue water bottle",
+        "description": "A reusable blue bottle with a silver lid and campus logo.",
+        "color": "Blue",
+        "location": "Campus Center"
+      },
+      "found_item": {
+        "item_name": "Blue reusable water bottle",
+        "description": "Blue bottle with a silver cap and campus logo.",
+        "color": "Blue",
+        "location": "Campus Center"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G02",
+      "lost_item": {
+        "item_name": "Black wireless headphones",
+        "description": "Over-ear headphones with a padded headband.",
+        "color": "Black",
+        "location": "Greenley Library"
+      },
+      "found_item": {
+        "item_name": "Black Bluetooth headphones",
+        "description": "Over-ear wireless headphones with padded ear cups.",
+        "color": "Black",
+        "location": "Greenley Library"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G03",
+      "lost_item": {
+        "item_name": "Silver laptop charger",
+        "description": "A charger for a laptop with a rectangular power adapter.",
+        "color": "Silver",
+        "location": "Sinclair Hall"
+      },
+      "found_item": {
+        "item_name": "Silver laptop power adapter",
+        "description": "Rectangular laptop charging adapter.",
+        "color": "Silver",
+        "location": "Sinclair Hall"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G04",
+      "lost_item": {
+        "item_name": "Red backpack",
+        "description": "A red backpack with two front zipper pockets.",
+        "color": "Red",
+        "location": "Hale Hall"
+      },
+      "found_item": {
+        "item_name": "Red school backpack",
+        "description": "Red bag with two front zippered compartments.",
+        "color": "Red",
+        "location": "Hale Hall"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G05",
+      "lost_item": {
+        "item_name": "Gold keychain",
+        "description": "A small gold-colored keychain with three keys attached.",
+        "color": "Gold",
+        "location": "Campus Commons"
+      },
+      "found_item": {
+        "item_name": "Gold key ring",
+        "description": "Small gold keychain holding three keys.",
+        "color": "Gold",
+        "location": "Campus Commons"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G06",
+      "lost_item": {
+        "item_name": "White wireless mouse",
+        "description": "A compact wireless computer mouse.",
+        "color": "White",
+        "location": "School of Business"
+      },
+      "found_item": {
+        "item_name": "White computer mouse",
+        "description": "Compact wireless mouse for a laptop or desktop.",
+        "color": "White",
+        "location": "School of Business"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G07",
+      "lost_item": {
+        "item_name": "Purple pencil case",
+        "description": "A purple fabric pouch containing school supplies.",
+        "color": "Purple",
+        "location": "Thompson Hall"
+      },
+      "found_item": {
+        "item_name": "Purple stationery pouch",
+        "description": "Fabric pencil pouch for holding pens and pencils.",
+        "color": "Purple",
+        "location": "Thompson Hall"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G08",
+      "lost_item": {
+        "item_name": "Brown leather wallet",
+        "description": "A small brown folding wallet.",
+        "color": "Brown",
+        "location": "Memorial Hall"
+      },
+      "found_item": {
+        "item_name": "Brown bifold wallet",
+        "description": "Small brown leather folding wallet.",
+        "color": "Brown",
+        "location": "Memorial Hall"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G09",
+      "lost_item": {
+        "item_name": "Green umbrella",
+        "description": "A collapsible green umbrella with a curved handle.",
+        "color": "Green",
+        "location": "Ward Hall"
+      },
+      "found_item": {
+        "item_name": "Green folding umbrella",
+        "description": "Compact green umbrella with a curved grip.",
+        "color": "Green",
+        "location": "Ward Hall"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G10",
+      "lost_item": {
+        "item_name": "Blue phone case",
+        "description": "A blue protective case for a smartphone.",
+        "color": "Blue",
+        "location": "Knapp Hall"
+      },
+      "found_item": {
+        "item_name": "Blue smartphone cover",
+        "description": "Blue protective phone case.",
+        "color": "Blue",
+        "location": "Knapp Hall"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "G11",
+      "lost_item": {
+        "item_name": "Black calculator",
+        "description": "A scientific calculator with multiple function buttons.",
+        "color": "Black",
+        "location": "Sinclair Hall"
+      },
+      "found_item": {
+        "item_name": "Red baseball cap",
+        "description": "A red cap with a curved brim.",
+        "color": "Red",
+        "location": "Sinclair Hall"
+      },
+      "expected_match": false
+    },
+    {
+      "id": "G12",
+      "lost_item": {
+        "item_name": "Silver ring",
+        "description": "A small silver-colored metal ring.",
+        "color": "Silver",
+        "location": "Greenley Library"
+      },
+      "found_item": {
+        "item_name": "Black laptop bag",
+        "description": "A large black bag with a shoulder strap.",
+        "color": "Black",
+        "location": "Greenley Library"
+      },
+      "expected_match": false
+    },
+    {
+      "id": "G13",
+      "lost_item": {
+        "item_name": "Yellow notebook",
+        "description": "A yellow spiral-bound notebook.",
+        "color": "Yellow",
+        "location": "Campus Center"
+      },
+      "found_item": {
+        "item_name": "White earbuds",
+        "description": "A pair of small wireless audio earbuds.",
+        "color": "White",
+        "location": "Campus Center"
+      },
+      "expected_match": false
+    },
+    {
+      "id": "G14",
+      "lost_item": {
+        "item_name": "Black winter gloves",
+        "description": "A pair of black insulated gloves.",
+        "color": "Black",
+        "location": "Hale Hall"
+      },
+      "found_item": {
+        "item_name": "Blue insulated lunch bag",
+        "description": "A blue fabric bag used to carry food.",
+        "color": "Blue",
+        "location": "Hale Hall"
+      },
+      "expected_match": false
+    },
+    {
+      "id": "G15",
+      "lost_item": {
+        "item_name": "White charging cable",
+        "description": "A short white USB charging cable.",
+        "color": "White",
+        "location": "Thompson Hall"
+      },
+      "found_item": {
+        "item_name": "Brown leather belt",
+        "description": "A brown leather belt with a metal buckle.",
+        "color": "Brown",
+        "location": "Thompson Hall"
+      },
+      "expected_match": false
+    }
+  ]
+}
