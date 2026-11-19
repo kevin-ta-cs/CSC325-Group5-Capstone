@@ -185,6 +185,24 @@ Run the Django tests from the DjangoLostandFound directory:
 
 ```bash
 python3 manage.py test myapp --noinput
+```
+
+### AI Failure Handling
+
+The application includes fallback behavior for AI matching failures.
+
+If the Gemini matching service fails, the application returns a
+user-friendly message explaining that matching is temporarily
+unavailable.
+
+Users can still submit lost or found item reports even when
+AI matching is unavailable.
+
+Automated tests verify that:
+- AI matching failures return an appropriate error response.
+- Private API error details are not exposed.
+- Users can still submit reports successfully.
+- Submitted reports are saved despite the AI failure.
 
 ## AI Usage
 
