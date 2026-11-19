@@ -15,6 +15,11 @@ urlpatterns = [
         name='find_lost_item_matches',
     ),
     path(
+        'report/photo-analysis/',
+        views.analyze_uploaded_item_photo,
+        name='analyze_uploaded_item_photo',
+    ),
+    path(
         'report/found/<str:item_id>/image/',
         views.found_item_image,
         name='found_item_image',

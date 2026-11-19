@@ -1,6 +1,8 @@
 import mimetypes
 
 from django.contrib.auth.views import LoginView
+import logging
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -11,6 +13,7 @@ from django.views.decorators.http import require_POST
 from .forms import DashboardUsernameForm, FoundItemForm, FoundItemInquiryForm, SignUpForm
 from .matching import MatchingError, find_possible_matches
 from .models import FoundItem, FoundItemInquiry
+from .photo_analysis import PhotoAnalysisError, analyze_item_photo
 from .pages import (
     REPORTS,
     browse_items_page,
@@ -21,6 +24,8 @@ from .pages import (
     signup_page,
     user_dashboard_page,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def home(request):
@@ -187,6 +192,52 @@ def find_lost_item_matches(request):
             ],
         }
     )
+
+
+@login_required(login_url='login')
+def analyze_uploaded_item_photo(request):
+    if request.method != 'POST':
+        response = JsonResponse(
+            {'error': 'Only POST requests are supported.'},
+            status=405,
+        )
+        response['Allow'] = 'POST'
+        return response
+
+    uploaded_image = request.FILES.get('image')
+    if uploaded_image is None:
+        return JsonResponse(
+            {'error': 'An image upload is required.'},
+            status=400,
+        )
+
+    try:
+        analysis = analyze_item_photo(uploaded_image)
+    except PhotoAnalysisError as error:
+        message = str(error)
+        if message.startswith('Photo analysis is temporarily unavailable.'):
+            status = 503
+        elif message.startswith('Photo analysis is taking too long.'):
+            status = 504
+        elif message.startswith('AI photo analysis is not configured.'):
+            status = 503
+        elif message.startswith('AI photo analysis returned an invalid response.'):
+            status = 502
+        else:
+            status = 400
+        return JsonResponse({'error': message}, status=status)
+    except Exception:
+        logger.exception('Unexpected photo analysis endpoint failure')
+        return JsonResponse(
+            {
+                'error': (
+                    'Photo analysis is temporarily unavailable. Please try again.'
+                )
+            },
+            status=503,
+        )
+
+    return JsonResponse(analysis)
 
 
 def _found_item_or_404(item_id):

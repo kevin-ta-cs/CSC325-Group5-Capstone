@@ -6,11 +6,12 @@ from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx2
 from PIL import Image
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from google import genai
 from google.genai import errors as genai_errors
@@ -20,9 +21,629 @@ from .forms import FoundItemForm
 from .matching import MatchingError, find_possible_matches
 from .models import FoundItem, FoundItemInquiry
 from .pages import REPORTS
+from .photo_analysis import (
+	ALLOWED_CATEGORIES,
+	MAX_IMAGE_SIZE,
+	PhotoAnalysisError,
+	analyze_item_photo,
+)
 
 User = get_user_model()
 GeminiClient = genai.Client
+
+
+class PhotoAnalysisTests(SimpleTestCase):
+	def create_image(self, *, name='item.png', content_type='image/png'):
+		image_data = BytesIO()
+		Image.new('RGB', (2, 2), color='blue').save(image_data, format='PNG')
+		return SimpleUploadedFile(name, image_data.getvalue(), content_type=content_type)
+
+	def mock_response(self, gemini_client, payload):
+		gemini_client.return_value.__enter__.return_value = (
+			gemini_client.return_value
+		)
+		gemini_client.return_value.models.generate_content.return_value = (
+			SimpleNamespace(text=json.dumps(payload))
+		)
+
+	def test_analyze_photo_returns_structured_visible_item_details(self):
+		expected = {
+			'item_count': 1,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+				'description': 'A blue backpack with two visible front pockets.',
+			}],
+		}
+		image = self.create_image()
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, expected)
+			result = analyze_item_photo(image)
+
+		self.assertEqual(result, expected)
+		gemini_client.assert_called_once_with(api_key='unit-test-key')
+		request = gemini_client.return_value.models.generate_content.call_args
+		self.assertEqual(request.kwargs['model'], 'gemini-3.5-flash-lite')
+		self.assertEqual(
+			request.kwargs['config'].response_schema['properties']['items']['items']
+			['properties']['category']['enum'],
+			list(ALLOWED_CATEGORIES),
+		)
+		prompt = request.kwargs['contents'][0]
+		self.assertIn('each distinct item', prompt)
+		self.assertIn('Ignore background objects, furniture, hands, people', prompt)
+		self.assertIn('Never combine multiple items into one description', prompt)
+		self.assertIn('empty array and item_count 0', prompt)
+		self.assertIn('an item-only description', prompt)
+		self.assertIn('clearly visible brand or logo', prompt)
+		self.assertIn('one concise sentence of about 10-20 words', prompt)
+		self.assertIn('Do not invent details that are not clearly visible', prompt)
+		image_part = request.kwargs['contents'][1]
+		self.assertEqual(image_part.inline_data.mime_type, 'image/png')
+		image.seek(0)
+		self.assertEqual(image_part.inline_data.data, image.read())
+
+	def test_analyze_photo_returns_zero_items_when_no_reportable_item_is_clear(self):
+		expected = {'item_count': 0, 'items': []}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, expected)
+			result = analyze_item_photo(self.create_image())
+
+		self.assertEqual(result, expected)
+
+	def test_analyze_photo_returns_multiple_items_separately(self):
+		expected = {
+			'item_count': 2,
+			'items': [
+				{
+					'item_name': 'Blue water bottle',
+					'category': 'Accessories',
+					'color': 'Blue',
+					'description': 'A blue reusable bottle with a black cap.',
+				},
+				{
+					'item_name': 'Silver key ring',
+					'category': 'Keys',
+					'color': 'Silver',
+					'description': 'A silver key ring holding three visible keys.',
+				},
+			],
+		}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, expected)
+			result = analyze_item_photo(self.create_image())
+
+		self.assertEqual(result, expected)
+		self.assertEqual(result['item_count'], len(result['items']))
+		self.assertNotEqual(
+			result['items'][0]['description'],
+			result['items'][1]['description'],
+		)
+
+	def test_invalid_image_type_is_rejected_without_calling_gemini(self):
+		invalid_image = SimpleUploadedFile(
+			'item.txt',
+			b'not an image',
+			content_type='text/plain',
+		)
+		with patch('myapp.photo_analysis.genai.Client') as gemini_client:
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Unsupported image type. Choose a JPEG, PNG, or WebP image.',
+			):
+				analyze_item_photo(invalid_image)
+
+		gemini_client.assert_not_called()
+
+	def test_image_larger_than_limit_is_rejected_without_calling_gemini(self):
+		large_image = SimpleUploadedFile(
+			'large.png',
+			b'x' * (MAX_IMAGE_SIZE + 1),
+			content_type='image/png',
+		)
+		with patch('myapp.photo_analysis.genai.Client') as gemini_client:
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'This image is too large. Choose an image that is 5 MB or smaller.',
+			):
+				analyze_item_photo(large_image)
+
+		gemini_client.assert_not_called()
+
+	def test_corrupted_image_is_rejected_with_friendly_message(self):
+		corrupted_image = SimpleUploadedFile(
+			'item.png',
+			b'not actually an image',
+			content_type='image/png',
+		)
+		with patch('myapp.photo_analysis.genai.Client') as gemini_client:
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				"We couldn't read this image. Try a valid JPEG, PNG, or WebP file.",
+			):
+				analyze_item_photo(corrupted_image)
+
+		gemini_client.assert_not_called()
+
+	def test_invalid_category_from_gemini_is_rejected(self):
+		response = {
+			'item_count': 1,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Personal Property',
+				'color': 'Blue',
+				'description': 'A blue backpack.',
+			}],
+		}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, response)
+			with self.assertRaises(PhotoAnalysisError):
+				analyze_item_photo(self.create_image())
+
+	def test_item_count_must_match_items_length(self):
+		response = {
+			'item_count': 2,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+				'description': 'A blue backpack.',
+			}],
+		}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, response)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis returned an invalid response.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_malformed_item_in_gemini_response_is_rejected(self):
+		response = {
+			'item_count': 1,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+			}],
+		}
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			self.mock_response(gemini_client, response)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis returned an invalid response.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_malformed_gemini_json_is_rejected(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = (
+				gemini_client.return_value
+			)
+			gemini_client.return_value.models.generate_content.return_value = (
+				SimpleNamespace(text='not JSON')
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis returned an invalid response.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_missing_api_key_is_reported_without_calling_gemini(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': ''}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'AI photo analysis is not configured.',
+			):
+				analyze_item_photo(self.create_image())
+
+		gemini_client.assert_not_called()
+
+	def test_gemini_api_error_becomes_friendly_photo_analysis_error(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = (
+				gemini_client.return_value
+			)
+			gemini_client.return_value.models.generate_content.side_effect = (
+				genai_errors.APIError(503, {'error': 'service unavailable'})
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is temporarily unavailable. Please try again.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_gemini_timeout_becomes_friendly_timeout_error(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				httpx2.TimeoutException('private timeout details')
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is taking too long. Please try again.',
+			) as raised:
+				analyze_item_photo(self.create_image())
+
+		self.assertNotIn('private timeout details', str(raised.exception))
+
+	def test_gemini_gateway_timeout_becomes_friendly_timeout_error(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				genai_errors.APIError(504, {'error': 'private timeout details'})
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is taking too long. Please try again.',
+			):
+				analyze_item_photo(self.create_image())
+
+	def test_gemini_network_error_becomes_friendly_unavailable_error(self):
+		request = httpx2.Request('POST', 'https://example.test')
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				httpx2.ConnectError('private network detail', request=request)
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is temporarily unavailable. Please try again.',
+			) as raised:
+				analyze_item_photo(self.create_image())
+
+		self.assertNotIn('private network detail', str(raised.exception))
+
+	def test_unexpected_gemini_exception_is_not_exposed(self):
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client') as gemini_client,
+		):
+			gemini_client.return_value.__enter__.return_value = gemini_client.return_value
+			gemini_client.return_value.models.generate_content.side_effect = (
+				RuntimeError('private server detail')
+			)
+			with self.assertRaisesMessage(
+				PhotoAnalysisError,
+				'Photo analysis is temporarily unavailable. Please try again.',
+			) as raised:
+				analyze_item_photo(self.create_image())
+
+		self.assertNotIn('private server detail', str(raised.exception))
+
+	def test_gemini_client_stays_open_during_image_analysis_and_closes_afterward(self):
+		client_transports = []
+
+		def create_client(**kwargs):
+			client = GeminiClient(**kwargs)
+			client_transports.append(client._api_client._httpx_client)
+			return client
+
+		def generate_content(models, **kwargs):
+			if models._api_client._httpx_client.is_closed:
+				raise RuntimeError(
+					"Cannot send a request, as the client has been closed."
+				)
+			return SimpleNamespace(
+				text=json.dumps({
+					'item_count': 1,
+					'items': [{
+						'item_name': 'Blue backpack',
+						'category': 'Bags & Luggage',
+						'color': 'Blue',
+						'description': 'A blue backpack.',
+					}],
+				})
+			)
+
+		with (
+			patch.dict(os.environ, {'GEMINI_API_KEY': 'unit-test-key'}),
+			patch('myapp.photo_analysis.genai.Client', side_effect=create_client),
+			patch.object(Models, 'generate_content', new=generate_content),
+		):
+			result = analyze_item_photo(self.create_image())
+
+		self.assertEqual(result['items'][0]['item_name'], 'Blue backpack')
+		self.assertEqual(len(client_transports), 1)
+		self.assertTrue(client_transports[0].is_closed)
+
+
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+class PhotoAnalysisEndpointTests(TestCase):
+	password = 'CampusFind!2026Strong'
+
+	def create_user(self):
+		return User.objects.create_user(
+			username='photo-endpoint-user',
+			email='photo-endpoint-user@example.com',
+			password=self.password,
+		)
+
+	def create_image(self):
+		image_data = BytesIO()
+		Image.new('RGB', (2, 2), color='blue').save(image_data, format='PNG')
+		return SimpleUploadedFile(
+			'item.png',
+			image_data.getvalue(),
+			content_type='image/png',
+		)
+
+	def test_photo_analysis_endpoint_requires_login(self):
+		response = self.client.post(
+			reverse('analyze_uploaded_item_photo'),
+			{'image': self.create_image()},
+		)
+
+		self.assertRedirects(
+			response,
+			f'{reverse("login")}?next={reverse("analyze_uploaded_item_photo")}',
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_returns_structured_json_without_saving(self):
+		self.client.force_login(self.create_user())
+		analysis = {
+			'item_count': 1,
+			'items': [{
+				'item_name': 'Blue backpack',
+				'category': 'Bags & Luggage',
+				'color': 'Blue',
+				'description': 'A blue backpack with two front pockets.',
+			}],
+		}
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			return_value=analysis,
+		) as analyze_photo:
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json(), analysis)
+		analyze_photo.assert_called_once()
+		self.assertEqual(
+			analyze_photo.call_args.args[0].name,
+			'item.png',
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_returns_zero_and_multiple_item_shapes(self):
+		self.client.force_login(self.create_user())
+		analyses = [
+			{'item_count': 0, 'items': []},
+			{
+				'item_count': 2,
+				'items': [
+					{
+						'item_name': 'Blue water bottle',
+						'category': 'Accessories',
+						'color': 'Blue',
+						'description': 'A blue reusable bottle.',
+					},
+					{
+						'item_name': 'Silver key ring',
+						'category': 'Keys',
+						'color': 'Silver',
+						'description': 'A silver key ring with three keys.',
+					},
+				],
+			},
+		]
+
+		for analysis in analyses:
+			with self.subTest(item_count=analysis['item_count']):
+				with patch(
+					'myapp.views.analyze_item_photo',
+					return_value=analysis,
+				):
+					response = self.client.post(
+						reverse('analyze_uploaded_item_photo'),
+						{'image': self.create_image()},
+					)
+
+				self.assertEqual(response.status_code, 200)
+				self.assertEqual(response.json(), analysis)
+				self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_reports_missing_image_as_json(self):
+		self.client.force_login(self.create_user())
+
+		with patch('myapp.views.analyze_item_photo') as analyze_photo:
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{},
+			)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertEqual(
+			response.json(),
+			{'error': 'An image upload is required.'},
+		)
+		analyze_photo.assert_not_called()
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_reports_invalid_image_as_json(self):
+		self.client.force_login(self.create_user())
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			side_effect=PhotoAnalysisError(
+				"We couldn't read this image. Try a valid JPEG, PNG, or WebP file."
+			),
+		):
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertEqual(
+			response.json(),
+			{
+				'error': (
+					"We couldn't read this image. "
+					"Try a valid JPEG, PNG, or WebP file."
+				)
+			},
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_reports_gemini_failure_without_details(self):
+		self.client.force_login(self.create_user())
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			side_effect=PhotoAnalysisError(
+				'Photo analysis is temporarily unavailable. Please try again.'
+			),
+		):
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 503)
+		self.assertEqual(
+			response.json(),
+			{
+				'error': (
+					'Photo analysis is temporarily unavailable. Please try again.'
+				)
+			},
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_returns_gateway_timeout_without_details(self):
+		self.client.force_login(self.create_user())
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			side_effect=PhotoAnalysisError(
+				'Photo analysis is taking too long. Please try again.'
+			),
+		):
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 504)
+		self.assertEqual(
+			response.json(),
+			{'error': 'Photo analysis is taking too long. Please try again.'},
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_hides_unexpected_exception_details(self):
+		self.client.force_login(self.create_user())
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			side_effect=RuntimeError('private server detail'),
+		):
+			response = self.client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+			)
+
+		self.assertEqual(response.status_code, 503)
+		self.assertEqual(
+			response.json(),
+			{
+				'error': (
+					'Photo analysis is temporarily unavailable. Please try again.'
+				)
+			},
+		)
+		self.assertNotIn('private server detail', response.content.decode())
+		self.assertFalse(FoundItem.objects.exists())
+	def test_photo_analysis_endpoint_returns_json_405_for_other_methods(self):
+		self.client.force_login(self.create_user())
+
+		response = self.client.get(reverse('analyze_uploaded_item_photo'))
+
+		self.assertEqual(response.status_code, 405)
+		self.assertEqual(response['Allow'], 'POST')
+		self.assertEqual(
+			response.json(),
+			{'error': 'Only POST requests are supported.'},
+		)
+		self.assertFalse(FoundItem.objects.exists())
+
+	def test_photo_analysis_endpoint_enforces_csrf(self):
+		client = Client(enforce_csrf_checks=True)
+		client.force_login(self.create_user())
+		form_response = client.get(reverse('found_report'), {'type': 'lost'})
+		csrf_token = form_response.cookies['csrftoken'].value
+
+		with patch(
+			'myapp.views.analyze_item_photo',
+			return_value={
+				'item_count': 1,
+				'items': [{
+					'item_name': 'Blue backpack',
+					'category': 'Bags & Luggage',
+					'color': 'Blue',
+					'description': 'A blue backpack.',
+				}],
+			},
+		) as analyze_photo:
+			response = client.post(
+				reverse('analyze_uploaded_item_photo'),
+				{'image': self.create_image()},
+				HTTP_X_CSRFTOKEN=csrf_token,
+			)
+
+		self.assertEqual(response.status_code, 200)
+		analyze_photo.assert_called_once()
+		self.assertFalse(FoundItem.objects.exists())
+
+		response = client.post(
+			reverse('analyze_uploaded_item_photo'),
+			{'image': self.create_image()},
+		)
+		self.assertEqual(response.status_code, 403)
+		self.assertFalse(FoundItem.objects.exists())
 
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
@@ -645,6 +1266,41 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'type="time"')
 		self.assertContains(response, 'enctype="multipart/form-data"')
 		self.assertContains(response, 'name="image"')
+		self.assertContains(
+			response,
+			'<button class="photo-analysis-button" type="button" data-photo-analysis-url="/report/photo-analysis/">Analyze Photo with AI</button>',
+			html=True,
+		)
+		self.assertContains(response, 'data-photo-analysis-preview')
+		self.assertLess(
+			response.content.index(b'class="photo-analysis-section"'),
+			response.content.index(b'name="item_name"'),
+		)
+		self.assertEqual(response.content.count(b'name="image"'), 1)
+		self.assertContains(response, 'new FormData()')
+		self.assertContains(response, 'formData.append("image",image)')
+		self.assertContains(response, '"X-CSRFToken":csrf?.value||""')
+		self.assertContains(response, 'photoButton.disabled=true')
+		self.assertContains(response, 'Analyzing photo...')
+		self.assertContains(response, 'Array.isArray(data.items)')
+		self.assertContains(response, 'data.item_count!==data.items.length')
+		self.assertContains(
+			response,
+			'No clear items were detected. Upload a clearer photo or enter the report manually.',
+		)
+		self.assertContains(response, 'data.items.forEach((item,index)=>')
+		self.assertContains(response, '`${data.items.length} items detected`')
+		self.assertContains(response, '[["Item name",item.item_name]')
+		self.assertContains(response, '["Category",item.category]')
+		self.assertContains(response, '["Color",item.color]')
+		self.assertContains(response, '["Description",item.description]')
+		self.assertContains(response, 'term.textContent=label')
+		self.assertContains(
+			response,
+			'detail.textContent=typeof value==="string"&&value.trim()?value:"Not identified"',
+		)
+		self.assertNotContains(response, 'innerHTML')
+		self.assertContains(response, 'photoButton.disabled=false')
 		self.assertContains(response, 'New images stay private until an admin approves them.')
 		self.assertContains(response, 'data-report-only="lost"')
 		self.assertContains(response, 'data-match-url="/report/lost/matches/"')
@@ -786,6 +1442,16 @@ class FoundItemReportTests(TestCase):
 		self.assertContains(response, 'No possible matches were found.')
 		self.assertContains(response, 'name="color"')
 		self.assertContains(response, 'values.set("report_type","lost")')
+		self.assertContains(
+			response,
+			'<button class="photo-analysis-button" type="button" data-photo-analysis-url="/report/photo-analysis/">Analyze Photo with AI</button>',
+			html=True,
+		)
+		self.assertLess(
+			response.content.index(b'class="photo-analysis-section"'),
+			response.content.index(b'name="item_name"'),
+		)
+		self.assertEqual(response.content.count(b'name="image"'), 1)
 		self.assertContains(response, 'Campus building')
 		self.assertContains(response, 'Date lost')
 		self.assertContains(response, 'Specific area')
@@ -797,6 +1463,79 @@ class FoundItemReportTests(TestCase):
 			html=True,
 		)
 		self.assertContains(response, 'name="report_type" value="lost"')
+
+	def test_photo_analysis_preview_supports_zero_one_multiple_items_for_both_report_types(self):
+		user = self.create_user()
+		self.client.force_login(user)
+
+		for report_type in ('found', 'lost'):
+			with self.subTest(report_type=report_type):
+				response = self.client.get(
+					reverse('found_report'),
+					{'type': report_type},
+				)
+
+				self.assertContains(response, 'Array.isArray(data.items)')
+				self.assertContains(response, 'data.items.length===0')
+				self.assertContains(
+					response,
+					'No clear items were detected. Upload a clearer photo or enter the report manually.',
+				)
+				self.assertContains(response, 'data.items.length===1')
+				self.assertContains(response, '`${data.items.length} items detected`')
+				self.assertContains(response, 'data.items.forEach((item,index)=>')
+				self.assertContains(response, '["Item name",item.item_name]')
+				self.assertContains(response, '["Category",item.category]')
+				self.assertContains(response, '["Color",item.color]')
+				self.assertContains(response, '["Description",item.description]')
+				self.assertContains(response, 'data-image-preview hidden')
+				self.assertContains(response, 'data-image-preview-image')
+				self.assertContains(response, 'Preview of selected item photo')
+				self.assertContains(response, 'URL.createObjectURL(image)')
+				self.assertContains(response, 'URL.revokeObjectURL(activeImagePreviewUrl)')
+				self.assertContains(response, 'imageInput.addEventListener("change"')
+				self.assertContains(response, 'imagePreviewElement.removeAttribute("src")')
+				self.assertContains(response, 'No image selected.')
+				self.assertContains(response, 'This image can’t be previewed.')
+				self.assertContains(response, 'max-height: 240px')
+				self.assertContains(response, 'object-fit: contain')
+				self.assertContains(response, 'photoAnalysisRequest+=1')
+				self.assertLess(
+					response.content.index(b'name="image"'),
+					response.content.index(b'data-image-preview hidden'),
+				)
+				self.assertLess(
+					response.content.index(b'data-image-preview hidden'),
+					response.content.index(b'class="photo-analysis-button"'),
+				)
+				self.assertContains(response, 'itemSection.className="photo-analysis-item"')
+				self.assertContains(response, 'selectButton.type="button"')
+				self.assertContains(response, 'selectButton.textContent="Select This Item"')
+				self.assertContains(response, 'selectButton.textContent="Selected"')
+				self.assertContains(response, 'selectedItemSection.classList.remove("selected")')
+				self.assertContains(response, 'itemSection.classList.add("selected")')
+				self.assertContains(response, '.photo-analysis-item.selected')
+				self.assertContains(response, 'item_name:item.item_name,color:item.color,description:item.description')
+				self.assertContains(response, 'form.querySelector("[name=category]")')
+				self.assertContains(response, 'option.value===item.category')
+				self.assertContains(response, 'window.confirm(')
+				self.assertContains(response, 'field.value!==value')
+				self.assertContains(response, 'lastAppliedValues[name]!==field.value')
+				self.assertContains(response, 'field.value=value')
+				self.assertContains(response, 'lastAppliedValues=null')
+				self.assertNotContains(response, 'form.submit()')
+				self.assertContains(response, 'photoButton.disabled=true')
+				self.assertContains(response, 'photoButton.disabled=false')
+				self.assertContains(response, '"X-CSRFToken":csrf?.value||""')
+				self.assertContains(response, 'photoPreview.textContent="Analyzing photo..."')
+				self.assertContains(response, 'Select a photo first, then try analyzing it.')
+				self.assertContains(response, 'typeof data?.error==="string"?data.error')
+				self.assertContains(response, 'error instanceof TypeError')
+				self.assertContains(response, 'Check your connection and try again.')
+				self.assertContains(response, 'finally{if(requestId===photoAnalysisRequest)photoButton.disabled=false;}')
+				self.assertContains(response, 'if(requestId!==photoAnalysisRequest)return;')
+				self.assertNotContains(response, 'innerHTML')
+				self.assertEqual(response.content.count(b'name="image"'), 1)
 
 		response = self.client.post(
 			reverse('found_report'),

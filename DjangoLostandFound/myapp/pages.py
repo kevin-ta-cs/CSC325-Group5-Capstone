@@ -1709,6 +1709,40 @@ FOUND_ITEM_PAGE = """<!doctype html>
     }
     body.theme-dark .match-button { border-color: #66d8c6; color: #8ce8d8; }
     .match-button:disabled { cursor: wait; opacity: .7; }
+    .photo-analysis-button {
+      margin-top: 10px; padding: 9px 14px; border: 1px solid #087c70;
+      border-radius: 10px; background: transparent; color: #087c70;
+      font-weight: 750; cursor: pointer;
+    }
+    body.theme-dark .photo-analysis-button { border-color: #66d8c6; color: #8ce8d8; }
+    .photo-analysis-button:hover { background: rgba(8,124,112,.08); }
+    .photo-analysis-button:disabled { cursor: wait; opacity: .7; }
+    .photo-analysis-section { grid-column: 1 / -1; }
+    .photo-image-preview {
+      margin-top: 10px; padding: 10px; border: 1px solid var(--line);
+      border-radius: 12px; background: var(--card);
+    }
+    .photo-image-preview img {
+      display: block; max-width: 100%; max-height: 240px; margin-inline: auto;
+      border-radius: 8px; object-fit: contain;
+    }
+    .photo-image-preview[hidden], .photo-image-preview img[hidden] { display: none; }
+    .photo-image-preview-message { margin: 0; color: var(--muted); font-size: .88rem; }
+    .photo-analysis-preview { margin-top: 10px; color: var(--muted); }
+    .photo-analysis-preview:empty { display: none; }
+    .photo-analysis-preview dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0 0; }
+    .photo-analysis-preview dt { font-weight: 750; }
+    .photo-analysis-preview dd { margin: 0; }
+    .photo-analysis-item { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+    .photo-analysis-item.selected { border-color: #087c70; background: rgba(8,124,112,.08); }
+    body.theme-dark .photo-analysis-item.selected { border-color: #66d8c6; background: rgba(102,216,198,.1); }
+    .photo-analysis-select-button {
+      margin-top: 10px; padding: 8px 12px; border: 1px solid #087c70;
+      border-radius: 10px; background: transparent; color: #087c70;
+      font-weight: 750; cursor: pointer;
+    }
+    body.theme-dark .photo-analysis-select-button { border-color: #66d8c6; color: #8ce8d8; }
+    .photo-analysis-item.selected .photo-analysis-select-button { background: var(--action-green); color: #fff; }
     .match-results { grid-column: 1 / -1; }
     .match-results:empty { display: none; }
     .match-result { margin: 0 0 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; }
@@ -1807,6 +1841,7 @@ FOUND_ITEM_PAGE = """<!doctype html>
           __CSRF_INPUT__
           __REPORT_TYPE_INPUT__
           __ERROR_SUMMARY__
+          __PHOTO_ANALYSIS_SECTION__
           __FORM_FIELDS__
           <p class="form-footer">Your report will be listed with its category, campus building, and date. Found-item reports also include the time found.</p>
           __MATCH_BUTTON__
@@ -1942,8 +1977,27 @@ def found_item_page(request, form, editing=False):
         if form.non_field_errors()
         else ""
     )
+    photo_analysis_section = format_html(
+        '<div class="photo-analysis-section">{}'
+        '<div class="photo-image-preview" data-image-preview hidden>'
+        '<img data-image-preview-image alt="Preview of selected item photo" hidden>'
+        '<p class="photo-image-preview-message" data-image-preview-message '
+        'aria-live="polite"></p></div>'
+        '<button class="photo-analysis-button" type="button" '
+        'data-photo-analysis-url="{}">Analyze Photo with AI</button>'
+        '<div class="photo-analysis-preview" data-photo-analysis-preview '
+        'aria-live="polite"></div></div>',
+        _found_item_field(
+            form,
+            "image",
+            "Item image",
+            full_width=True,
+            report_type=report_type,
+        ),
+        reverse("analyze_uploaded_item_photo"),
+    )
     form_fields = format_html(
-        "{}{}{}{}{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}{}{}",
         _found_item_field(form, "item_name", "Item name", full_width=True, report_type=report_type),
         _found_item_field(form, "color", "Color (optional)", report_type=report_type),
         _found_item_field(form, "category", "Category"),
@@ -1970,7 +2024,6 @@ def found_item_page(request, form, editing=False):
             full_width=True,
             report_type=report_type,
         ),
-        _found_item_field(form, "image", "Item image", full_width=True, report_type=report_type),
         _found_item_field(
             form,
             "ownership_question",
@@ -2024,6 +2077,7 @@ def found_item_page(request, form, editing=False):
         ("__SUBMIT_LABEL__", "Save changes" if editing else f"Publish {type_label} item report"),
         ("__CSRF_INPUT__", str(csrf_input(request))),
         ("__ERROR_SUMMARY__", str(error_summary)),
+        ("__PHOTO_ANALYSIS_SECTION__", str(photo_analysis_section)),
         ("__FORM_FIELDS__", str(form_fields)),
         ("__NOTICES__", str(notices)),
         ("__YEAR__", str(date.today().year)),
@@ -2034,6 +2088,156 @@ def found_item_page(request, form, editing=False):
                 '<script>(function(){'
                 'const form=document.querySelector(".report-card form");'
                 'if(!form)return;'
+                'const photoButton=form.querySelector(".photo-analysis-button");'
+                'const photoPreview=form.querySelector("[data-photo-analysis-preview]");'
+                'if(photoButton&&photoPreview){'
+                'const imageInput=form.querySelector("input[type=file][name=image]");'
+                'const imagePreview=form.querySelector("[data-image-preview]");'
+                'const imagePreviewElement=form.querySelector("[data-image-preview-image]");'
+                'const imagePreviewMessage=form.querySelector("[data-image-preview-message]");'
+                'let activeImagePreviewUrl=null;'
+                'let photoAnalysisRequest=0;'
+                'let lastAppliedValues=null;'
+                'function revokeImagePreviewUrl(){'
+                'if(activeImagePreviewUrl){URL.revokeObjectURL(activeImagePreviewUrl);'
+                'activeImagePreviewUrl=null;}'
+                '}'
+                'if(imageInput&&imagePreview&&imagePreviewElement&&imagePreviewMessage){'
+                'imageInput.addEventListener("change",()=>{'
+                'photoAnalysisRequest+=1;'
+                'photoButton.disabled=false;'
+                'photoPreview.replaceChildren();'
+                'revokeImagePreviewUrl();'
+                'imagePreviewElement.removeAttribute("src");'
+                'imagePreviewElement.hidden=true;'
+                'imagePreview.hidden=false;'
+                'const image=imageInput.files?.[0];'
+                'if(!image){imagePreviewMessage.textContent="No image selected.";return;}'
+                'try{'
+                'const objectUrl=URL.createObjectURL(image);'
+                'activeImagePreviewUrl=objectUrl;'
+                'imagePreviewMessage.textContent="";'
+                'imagePreviewElement.onload=()=>{'
+                'if(activeImagePreviewUrl===objectUrl)imagePreviewElement.hidden=false;'
+                '};'
+                'imagePreviewElement.onerror=()=>{'
+                'if(activeImagePreviewUrl!==objectUrl)return;'
+                'revokeImagePreviewUrl();'
+                'imagePreviewElement.removeAttribute("src");'
+                'imagePreviewElement.hidden=true;'
+                'imagePreviewMessage.textContent="This image can’t be previewed. You can still try AI analysis or submit the report.";'
+                '};'
+                'imagePreviewElement.src=objectUrl;'
+                '}catch(error){'
+                'imagePreviewMessage.textContent="This image can’t be previewed. You can still try AI analysis or submit the report.";'
+                '}'
+                '});'
+                '}'
+                'photoButton.addEventListener("click",async()=>{'
+                'const image=imageInput?.files?.[0];'
+                'if(!image){'
+                'photoPreview.textContent="Select a photo first, then try analyzing it.";'
+                'return;'
+                '}'
+                'const requestId=++photoAnalysisRequest;'
+                'const formData=new FormData();'
+                'formData.append("image",image);'
+                'const csrf=form.querySelector("[name=csrfmiddlewaretoken]");'
+                'lastAppliedValues=null;'
+                'photoButton.disabled=true;'
+                'photoPreview.textContent="Analyzing photo...";'
+                'try{'
+                'const response=await fetch(photoButton.dataset.photoAnalysisUrl,{'
+                'method:"POST",credentials:"same-origin",'
+                'headers:{"X-CSRFToken":csrf?.value||"","Accept":"application/json"},'
+                'body:formData'
+                '});'
+                'let data;'
+                'try{data=await response.json();}'
+                'catch(error){throw new Error("We couldn’t analyze this photo. Please try again.");}'
+                'if(!response.ok){'
+                'const message=typeof data?.error==="string"?data.error:'
+                '"We couldn’t analyze this photo. Please try again.";'
+                'throw new Error(message);'
+                '}'
+                'if(requestId!==photoAnalysisRequest)return;'
+                'if(!Array.isArray(data.items)||!Number.isInteger(data.item_count)||'
+                'data.item_count!==data.items.length){'
+                'throw new Error("We couldn’t analyze this photo. Please try again.");'
+                '}'
+                'photoPreview.replaceChildren();'
+                'if(data.items.length===0){'
+                'photoPreview.textContent="No clear items were detected. Upload a clearer photo or enter the report manually.";'
+                'return;'
+                '}'
+                'const heading=document.createElement("strong");'
+                'heading.textContent=data.items.length===1'
+                '?"Photo analysis preview":`${data.items.length} items detected`;'
+                'photoPreview.append(heading);'
+                'let selectedItemSection=null;'
+                'data.items.forEach((item,index)=>{'
+                'const itemSection=document.createElement("section");'
+                'itemSection.className="photo-analysis-item";'
+                'if(data.items.length>1){'
+                'const itemHeading=document.createElement("h3");'
+                'itemHeading.textContent=`Item ${index+1}`;'
+                'itemSection.append(itemHeading);'
+                '}'
+                'const details=document.createElement("dl");'
+                '[["Item name",item.item_name],["Category",item.category],'
+                '["Color",item.color],["Description",item.description]].forEach(([label,value])=>{'
+                'const term=document.createElement("dt");'
+                'term.textContent=label;'
+                'const detail=document.createElement("dd");'
+                'detail.textContent=typeof value==="string"&&value.trim()?value:"Not identified";'
+                'details.append(term,detail);'
+                '});'
+                'const selectButton=document.createElement("button");'
+                'selectButton.type="button";'
+                'selectButton.className="photo-analysis-select-button";'
+                'selectButton.textContent="Select This Item";'
+                'selectButton.addEventListener("click",()=>{'
+                'const proposedValues={'
+                'item_name:item.item_name,color:item.color,description:item.description'
+                '};'
+                'const categoryField=form.querySelector("[name=category]");'
+                'if(categoryField&&typeof item.category==="string"&&'
+                'Array.from(categoryField.options).some(option=>option.value===item.category)){'
+                'proposedValues.category=item.category;'
+                '}'
+                'const manualChanges=Object.entries(proposedValues).filter(([name,value])=>{'
+                'const field=form.querySelector(`[name="${name}"]`);'
+                'return field&&typeof value==="string"&&value.trim()&&field.value&&'
+                'field.value!==value&&(!lastAppliedValues||lastAppliedValues[name]!==field.value);'
+                '});'
+                'if(manualChanges.length&&!window.confirm('
+                '"Replace your existing item details with the selected photo analysis?"))return;'
+                'Object.entries(proposedValues).forEach(([name,value])=>{'
+                'const field=form.querySelector(`[name="${name}"]`);'
+                'if(field&&typeof value==="string"&&value.trim()){'
+                'field.value=value;'
+                'lastAppliedValues=lastAppliedValues||{};'
+                'lastAppliedValues[name]=value;'
+                '}'
+                '});'
+                'if(selectedItemSection&&selectedItemSection!==itemSection){'
+                'selectedItemSection.classList.remove("selected");'
+                'selectedItemSection.querySelector("button").textContent="Select This Item";'
+                '}'
+                'itemSection.classList.add("selected");'
+                'selectButton.textContent="Selected";'
+                'selectedItemSection=itemSection;'
+                '});'
+                'itemSection.append(details,selectButton);'
+                'photoPreview.append(itemSection);'
+                '});'
+                '}catch(error){'
+                'if(requestId===photoAnalysisRequest)photoPreview.textContent=error instanceof TypeError'
+                '?"We couldn’t reach photo analysis. Check your connection and try again."'
+                ':error.message;'
+                '}finally{if(requestId===photoAnalysisRequest)photoButton.disabled=false;}'
+                '});'
+                '}'
                 'const typeInput=form.querySelector("[name=report_type]");'
                 'const buttons=document.querySelectorAll("[data-report-type]");'
                 'if(!typeInput||!buttons.length)return;'
