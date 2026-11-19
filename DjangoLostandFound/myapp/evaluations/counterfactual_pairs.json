@@ -1,0 +1,115 @@
+{
+  "description": "Equivalent descriptions used to test consistency in AI matching.",
+  "pairs": [
+    {
+      "id": "C01",
+      "lost_item_a": {
+        "item_name": "Blue water bottle",
+        "description": "A blue reusable water bottle with a silver lid.",
+        "color": "Blue",
+        "location": "Campus Center"
+      },
+      "lost_item_b": {
+        "item_name": "Reusable bottle",
+        "description": "I lost my blue water container. It has a metallic silver top.",
+        "color": "Blue",
+        "location": "Campus Center"
+      },
+      "found_item": {
+        "item_name": "Blue metal water bottle",
+        "description": "Reusable blue bottle with a silver-colored cap.",
+        "color": "Blue",
+        "location": "Campus Center"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "C02",
+      "lost_item_a": {
+        "item_name": "Black wireless headphones",
+        "description": "Black over-ear headphones with a padded headband.",
+        "color": "Black",
+        "location": "Gleeson Hall"
+      },
+      "lost_item_b": {
+        "item_name": "Wireless headset",
+        "description": "I misplaced my black headphones. They cover both ears and have a cushioned band.",
+        "color": "Black",
+        "location": "Gleeson Hall"
+      },
+      "found_item": {
+        "item_name": "Black Bluetooth headphones",
+        "description": "Black over-ear wireless headphones with a padded band.",
+        "color": "Black",
+        "location": "Gleeson Hall"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "C03",
+      "lost_item_a": {
+        "item_name": "Red backpack",
+        "description": "A red backpack with two main compartments.",
+        "color": "Red",
+        "location": "Greenley Library"
+      },
+      "lost_item_b": {
+        "item_name": "Red school bag",
+        "description": "I lost a red backpack with two large sections for storage.",
+        "color": "Red",
+        "location": "Greenley Library"
+      },
+      "found_item": {
+        "item_name": "Red backpack",
+        "description": "Red bag with two main zipper compartments.",
+        "color": "Red",
+        "location": "Greenley Library"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "C04",
+      "lost_item_a": {
+        "item_name": "Silver laptop charger",
+        "description": "A silver laptop power adapter with a long charging cable.",
+        "color": "Silver",
+        "location": "Horton Hall"
+      },
+      "lost_item_b": {
+        "item_name": "Laptop power supply",
+        "description": "I misplaced my silver computer charger and its attached cable.",
+        "color": "Silver",
+        "location": "Horton Hall"
+      },
+      "found_item": {
+        "item_name": "Silver laptop adapter",
+        "description": "Silver power adapter for a laptop with a cable.",
+        "color": "Silver",
+        "location": "Horton Hall"
+      },
+      "expected_match": true
+    },
+    {
+      "id": "C05",
+      "lost_item_a": {
+        "item_name": "Brown leather wallet",
+        "description": "A small brown leather wallet with several card slots.",
+        "color": "Brown",
+        "location": "Campus Commons"
+      },
+      "lost_item_b": {
+        "item_name": "Brown wallet",
+        "description": "I lost a compact leather wallet in brown with spaces for multiple cards.",
+        "color": "Brown",
+        "location": "Campus Commons"
+      },
+      "found_item": {
+        "item_name": "Brown leather wallet",
+        "description": "Compact brown leather wallet with multiple card pockets.",
+        "color": "Brown",
+        "location": "Campus Commons"
+      },
+      "expected_match": true
+    }
+  ]
+}
