@@ -88,7 +88,7 @@ jobs:
       - name: Run AI evaluation suite
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python manage.py evaluate_ai
+        run: python DjangoLostandFound/manage.py evaluate_ai
   deploy:
     name: Deploy
     needs: test
