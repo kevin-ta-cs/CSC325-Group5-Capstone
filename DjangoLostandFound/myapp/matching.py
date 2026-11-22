@@ -35,16 +35,28 @@ class MatchingError(Exception):
     """Raised when AI matching cannot return a usable result."""
 
 
-def find_possible_matches(*, item_name, description="", color="", location=""):
-    candidates = list(
-        FoundItem.objects.filter(report_type="found").values(
-            "pk",
-            "item_name",
-            "description",
-            "color",
-            "location",
+def find_possible_matches(
+    *, item_name, description="", color="", location="", candidate_items=None
+):
+    if candidate_items is None:
+        candidate_objects = list(
+            FoundItem.objects.filter(report_type="found")
         )
-    )
+    else:
+        candidate_objects = list(candidate_items)
+
+    candidates = [
+        {
+            "pk": item.pk,
+            "item_name": item.item_name,
+            "description": item.description,
+            "color": item.color,
+            "location": item.location,
+        }
+        for item in candidate_objects
+    ]
+
+
     if not candidates:
         return []
 
@@ -105,7 +117,10 @@ def find_possible_matches(*, item_name, description="", color="", location=""):
     ):
         raise MatchingError("AI matching returned an invalid response.")
 
-    candidates_by_id = {str(candidate["pk"]): candidate for candidate in candidates}
+    candidates_by_id = {
+        str(candidate["pk"]): candidate
+        for candidate in candidates
+    }
     matched_candidates = []
     seen_ids = set()
     for match in result["matches"]:
@@ -123,11 +138,9 @@ def find_possible_matches(*, item_name, description="", color="", location=""):
 
     items_by_id = {
         str(item.pk): item
-        for item in FoundItem.objects.filter(
-            pk__in=[pk for pk, _ in matched_candidates],
-            report_type="found",
-        )
+        for item in candidate_objects
     }
+
     return [
         {"item": items_by_id[str(pk)], "explanation": explanation}
         for pk, explanation in matched_candidates
