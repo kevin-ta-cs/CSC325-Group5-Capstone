@@ -67,7 +67,7 @@ class PhotoAnalysisTests(SimpleTestCase):
 		self.assertEqual(result, expected)
 		gemini_client.assert_called_once_with(api_key='unit-test-key')
 		request = gemini_client.return_value.models.generate_content.call_args
-		self.assertEqual(request.kwargs['model'], 'gemini-2.5-flash-lite')
+		self.assertEqual(request.kwargs['model'], 'gemini-3.5-flash-lite')
 		self.assertEqual(
 			request.kwargs['config'].response_schema['properties']['items']['items']
 			['properties']['category']['enum'],
@@ -740,7 +740,7 @@ class GeminiMatchingTests(TestCase):
 		self.assertEqual(FoundItem.objects.count(), 2)
 		gemini_client.assert_called_once_with(api_key='unit-test-key')
 		request = gemini_client.return_value.models.generate_content.call_args
-		self.assertEqual(request.kwargs['model'], 'gemini-2.5-flash-lite')
+		self.assertEqual(request.kwargs['model'], 'gemini-3.5-flash-lite')
 		self.assertIn('Blue water bottle', request.kwargs['contents'])
 		self.assertIn(str(found_item.pk), request.kwargs['contents'])
 		self.assertNotIn('matching-test-user@example.com', request.kwargs['contents'])

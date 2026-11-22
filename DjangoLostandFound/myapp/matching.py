@@ -11,7 +11,7 @@ from .models import FoundItem
 
 
 logger = logging.getLogger(__name__)
-GEMINI_MODEL = "gemini-2.5-flash-lite"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 MATCH_RESPONSE_SCHEMA = {
     "type": "OBJECT",
     "properties": {
