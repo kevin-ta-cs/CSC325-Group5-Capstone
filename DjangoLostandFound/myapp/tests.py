@@ -747,6 +747,47 @@ class GeminiMatchingTests(TestCase):
 		self.assertNotIn('ownership_question', request.kwargs['contents'])
 		self.assertNotIn('specific_area', request.kwargs['contents'])
 
+	def test_explicit_candidates_are_matched_without_database_or_gemini_calls(self):
+		candidate = SimpleNamespace(
+			pk='evaluation-candidate',
+			item_name='Blue reusable water bottle',
+			description='Blue bottle with a silver cap.',
+			color='Blue',
+			location='Campus Center',
+		)
+
+		with patch('myapp.matching.genai.Client') as gemini_client:
+			matches = find_possible_matches(
+				item_name='Blue water bottle',
+				description='A reusable blue bottle with a silver lid.',
+				color='Blue',
+				location='Campus Center',
+				candidate_items=[candidate],
+			)
+
+		self.assertEqual(matches[0]['item'], candidate)
+		self.assertIn('consistent', matches[0]['explanation'])
+		gemini_client.assert_not_called()
+
+	def test_explicit_candidates_reject_different_categories_and_colors(self):
+		candidate = SimpleNamespace(
+			pk='evaluation-candidate',
+			item_name='Red baseball cap',
+			description='A red cap with a curved brim.',
+			color='Red',
+			location='Sinclair Hall',
+		)
+
+		matches = find_possible_matches(
+			item_name='Black calculator',
+			description='A scientific calculator.',
+			color='Black',
+			location='Sinclair Hall',
+			candidate_items=[candidate],
+		)
+
+		self.assertEqual(matches, [])
+
 	def test_no_found_items_returns_without_calling_gemini(self):
 		reporter = self.create_user()
 		self.create_item(reporter, report_type='lost', item_name='Only lost item')
