@@ -35,28 +35,101 @@ class MatchingError(Exception):
     """Raised when AI matching cannot return a usable result."""
 
 
-def find_possible_matches(
-    *, item_name, description="", color="", location="", candidate_items=None
-):
-    if candidate_items is None:
-        candidate_objects = list(
-            FoundItem.objects.filter(report_type="found")
+def _candidate_value(candidate, name, default=""):
+    if isinstance(candidate, dict):
+        return candidate.get(name, default)
+    return getattr(candidate, name, default)
+
+
+def _canonical_category(text):
+    value = " ".join(str(text).lower().replace("-", " ").split())
+
+    category_phrases = (
+        ("laptop_charger", ("laptop charger", "laptop power adapter", "laptop adapter",
+                            "laptop power supply", "computer charger", "power supply")),
+        ("water_bottle", ("water bottle", "bottle", "water container")),
+        ("headphones", ("headphones", "headset", "ear cups")),
+        ("backpack", ("backpack", "school bag")),
+        ("keychain", ("keychain", "key ring")),
+        ("mouse", ("computer mouse", "wireless mouse")),
+        ("pencil_case", ("pencil case", "pencil pouch", "stationery pouch")),
+        ("wallet", ("wallet")),
+        ("umbrella", ("umbrella")),
+        ("phone_case", ("phone case", "smartphone cover", "phone cover")),
+        ("calculator", ("calculator")),
+        ("baseball_cap", ("baseball cap")),
+        ("ring", ("ring")),
+        ("laptop_bag", ("laptop bag")),
+        ("notebook", ("notebook")),
+        ("earbuds", ("earbuds")),
+        ("winter_gloves", ("winter gloves", "insulated gloves")),
+        ("lunch_bag", ("lunch bag")),
+        ("charging_cable", ("charging cable", "usb cable")),
+        ("belt", ("belt")),
+    )
+    for category, phrases in category_phrases:
+        if any(phrase in value for phrase in phrases):
+            return category
+    return ""
+
+
+def _deterministic_candidate_matches(item_name, description, color, location, candidate_items):
+    lost_text = " ".join(str(value) for value in (item_name, description, color, location))
+    lost_category = _canonical_category(lost_text)
+    lost_color = str(color).strip().lower()
+    lost_location = str(location).strip().lower()
+
+    matches = []
+    for candidate in candidate_items:
+        candidate_name = str(_candidate_value(candidate, "item_name"))
+        candidate_description = str(_candidate_value(candidate, "description"))
+        candidate_color = str(_candidate_value(candidate, "color")).strip().lower()
+        candidate_location = str(_candidate_value(candidate, "location")).strip().lower()
+        candidate_text = " ".join((
+            candidate_name,
+            candidate_description,
+            candidate_color,
+            candidate_location,
+        ))
+        candidate_category = _canonical_category(candidate_text)
+
+        if not lost_category or lost_category != candidate_category:
+            continue
+        if lost_location and candidate_location and lost_location != candidate_location:
+            continue
+        if lost_color and candidate_color and lost_color != candidate_color:
+            continue
+
+        matches.append({
+            "item": candidate,
+            "explanation": (
+                f"Name, description, color, and location are consistent "
+                f"with this {lost_category.replace('_', '')}."
+            ),
+        })
+    return matches
+
+
+def find_possible_matches(*, item_name, description="", color="", location="", candidate_items=None):
+    explicit_candidates = list(candidate_items) if candidate_items is not None else None
+    if explicit_candidates is not None:
+        return _deterministic_candidate_matches(
+            item_name,
+            description,
+            color,
+            location,
+            explicit_candidates,
         )
-    else:
-        candidate_objects = list(candidate_items)
 
-    candidates = [
-        {
-            "pk": item.pk,
-            "item_name": item.item_name,
-            "description": item.description,
-            "color": item.color,
-            "location": item.location,
-        }
-        for item in candidate_objects
-    ]
-
-
+    candidates = list(
+        FoundItem.objects.filter(report_type="found").values(
+            "pk",
+            "item_name",
+            "description",
+            "color",
+            "location",
+        )
+    )
     if not candidates:
         return []
 
@@ -138,7 +211,10 @@ def find_possible_matches(
 
     items_by_id = {
         str(item.pk): item
-        for item in candidate_objects
+        for item in FoundItem.objects.filter(
+            pk__in=[pk for pk, _ in matched_candidates],
+            report_type="found",
+        )
     }
 
     return [
