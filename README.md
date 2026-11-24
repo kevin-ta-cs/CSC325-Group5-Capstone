@@ -170,6 +170,40 @@ python3 manage.py test myapp --noinput --keepdb
 
 The Deploy stage does not currently publish the application to a live hosting service.
 
+## Sprint 3: AI Testing and Evaluation Pipeline
+
+### AI Unit Testing
+
+The project includes automated tests for AI-powered features,
+including photo analysis and item matching.
+
+AI API responses are mocked in the existing unit tests so
+the tests can check expected behavior without making real
+Gemini API requests.
+
+Run the Django tests from the DjangoLostandFound directory:
+
+```bash
+python3 manage.py test myapp --noinput
+```
+
+### AI Failure Handling
+
+The application includes fallback behavior for AI matching failures.
+
+If the Gemini matching service fails, the application returns a
+user-friendly message explaining that matching is temporarily
+unavailable.
+
+Users can still submit lost or found item reports even when
+AI matching is unavailable.
+
+Automated tests verify that:
+- AI matching failures return an appropriate error response.
+- Private API error details are not exposed.
+- Users can still submit reports successfully.
+- Submitted reports are saved despite the AI failure.
+
 ## AI Usage
 
 The team should document any AI tools used during development, including how generated suggestions were reviewed, tested, and corrected before being included in the project.

@@ -25,6 +25,24 @@ FORBIDDEN_CLAIMS = (
 class Command(BaseCommand):
     help = "Evaluate AI item matching without requiring MongoDB."
 
+    def match_with_retry(self, **kwargs):
+        max_attempts = 3
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return find_possible_matches(**kwargs)
+            except MatchingError:
+                if attempt == max_attempts:
+                    raise
+
+                wait_seconds = 5 * attempt
+                self.stdout.write(
+                    f"Gemini request failed. Retrying in "
+                    f"{wait_seconds} seconds "
+                    f"(attempt {attempt + 1}/{max_attempts})..."
+                )
+                time.sleep(wait_seconds)
+
     def handle(self, *args, **options):
         evaluation_dir = Path(__file__).resolve().parents[2] / "evaluations"
 
@@ -64,7 +82,7 @@ class Command(BaseCommand):
             found_item = self.create_test_item(test["found_item"])
 
             try:
-                matches = find_possible_matches(
+                matches =  self.match_with_retry(
                     **test["lost_item"],
                     candidate_items=[found_item],
                 )
@@ -123,11 +141,11 @@ class Command(BaseCommand):
             found_item = self.create_test_item(pair["found_item"])
 
             try:
-                result_a = find_possible_matches(
+                result_a =  self.match_with_retry(
                     **pair["lost_item_a"],
                     candidate_items=[found_item],
                 )
-                result_b = find_possible_matches(
+                result_b = self.match_with_retry(
                     **pair["lost_item_b"],
                     candidate_items=[found_item],
                 )
