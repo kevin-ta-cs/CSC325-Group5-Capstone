@@ -109,14 +109,9 @@ uploads.
 
 4. Create a `.env` file inside the outer `DjangoLostandFound` folder, alongside `manage.py`.
 
-5. Add the following environment variables:
 
-   ```dotenv
-   DJANGO_SECRET_KEY=Y3VujzyOVsIuL30v4W5yuYj4kAFYeMIPubH3gJPXMDsRwcaK1LgAy2all6zpG4jF86A
-   MONGODB_URI=mongodb+srv://user:password@lostandfound.db1lsrs.mongodb.net/
-   ```
-
-6. Replace the placeholders with your own authorized credentials. Never commit or share the `.env` file.
+   
+5. Replace the placeholders with your own authorized credentials. Never commit or share the `.env` file.
 
    For shared uploads, also configure an S3-compatible bucket and add its
    settings to the deployment environment (or the `.env` file for local
@@ -139,13 +134,13 @@ uploads.
    are not copied automatically; copy them to the bucket using their existing
    storage paths before switching to shared storage.
 
-7. Navigate to the Django application directory:
+6. Navigate to the Django application directory:
 
    ```bash
    cd DjangoLostandFound
    ```
 
-8. Start the development server:
+7. Start the development server:
 
    ```bash
    python3 manage.py runserver
