@@ -1,7 +1,6 @@
-import time
-time.sleep(5)
 import json
 import uuid
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -42,7 +41,6 @@ class Command(BaseCommand):
                     f"(attempt {attempt + 1}/{max_attempts})..."
                 )
                 time.sleep(wait_seconds)
-
     def handle(self, *args, **options):
         evaluation_dir = Path(__file__).resolve().parents[2] / "evaluations"
 
@@ -82,7 +80,7 @@ class Command(BaseCommand):
             found_item = self.create_test_item(test["found_item"])
 
             try:
-                matches =  self.match_with_retry(
+                matches = self.match_with_retry(
                     **test["lost_item"],
                     candidate_items=[found_item],
                 )
@@ -141,7 +139,7 @@ class Command(BaseCommand):
             found_item = self.create_test_item(pair["found_item"])
 
             try:
-                result_a =  self.match_with_retry(
+                result_a = self.match_with_retry(
                     **pair["lost_item_a"],
                     candidate_items=[found_item],
                 )
